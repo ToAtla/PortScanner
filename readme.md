@@ -29,3 +29,20 @@ If the scanner finds anything interesting, the results will be printed to the co
 
 Quit the program preemptively with escape characters ( presumably CTRL+C ).
 Otherwise the program ends after the scanning.
+
+## Assumptions and measures
+
+A UDP packet sent successfully to an open port will yield no result. However, a packet sent to a closed port will(or should) result in an ICMP Error.
+We can therefore extrapolate which ports are open.
+As UDP is an unreliable protocol we repeat each port "door-knock" three times, to give the ICMP error messages ample chance to arrive.
+
+The formula for UDP usage is:
+
+socket(AF_INET, SOCK_DGRAM, 0) //creating the socket
+sendto() // Ping the port on the ip
+recvfrom() // Accept the answer/error message
+
+## Resources and Inspiration
+
+
+http://www.ouah.org/portscandethly.pdf
