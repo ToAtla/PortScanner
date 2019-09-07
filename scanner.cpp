@@ -3,27 +3,32 @@
 //
 // Author: thorduratl17@ru.is and thordurf17@ru.is
 //
-// Build on macOS: g++ -std=c++11 client.cpp -o client
-//
+#include <iostream>
 
 #include <stdio.h>
-#include <iostream>
 #include <stdlib.h>
-#include <sys/socket.h>
-#include <arpa/inet.h>
+
 #include <unistd.h>
 #include <string.h>
+
 #include <sys/types.h>
-#include <netinet/in.h>
+#include <sys/socket.h>
+
+#include <arpa/inet.h>
+#include <netinet/ip.h>
+#include <netinet/ip_icmp.h>
+
 
 #define PORT	4002
 #define MAXLINE	1024
 
 struct icmphdr
 {
-	int type = 0;
-	int code = 0;
-	int checksum = 0;
+	char type = 0;
+	char code = 0;
+	short checksum = 0;
+	short identifier = 0;
+	short sequence_number = 0;
 };
 
 
@@ -38,7 +43,7 @@ void scan_ports()
 	struct icmphdr *icp = new icmphdr;
 	icp->type = 8; // ICMP_ECHO
 	icp->code = 0;
-	icp->checksum = 0xf7ff;
+	icp->checksum = 0xfff7; // Hardcoded
 	printf("icp created\n");
 
 	if ( (sockfd  = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP)) < 0 )
