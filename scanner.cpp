@@ -137,6 +137,7 @@ void send_raw_udp(int port){
   strcpy(sendline, "Hello");
 	udph->uh_ulen = htons(8 + strlen(sendline));
 	udph->uh_sum = 0;
+  printf("Warning! No checksum is being enforced");
   int udp_packet_length = sizeof(struct udphdr) + strlen(sendline);
   if( (sendto(sockfd, udph, udp_packet_length, 0, (const struct sockaddr *) &servaddr, sizeof(servaddr))) < 0)
 	{
@@ -153,11 +154,55 @@ void send_raw_udp(int port){
 	/**/
 }
 
-void recieve_reply(){
-	// recvfrom
-	/*
+void raw_udp_custom_ip(int port){
 
-	*/
+
+	struct sockaddr_in servaddr;
+  bzero(&servaddr, sizeof(servaddr));
+  int sockfd;
+  char *sendline;
+  char datagram[1024];
+  char recvline[1025];
+  memset(datagram, 0, 1024);
+
+	servaddr.sin_family = AF_INET;
+	servaddr.sin_port = htons(port);
+	if(inet_pton(AF_INET, ip_address , &servaddr.sin_addr) <= 0)
+	{
+		printf("\nInvalid address/ Address not supported \n");
+		return;
+	}
+	if ( ( sockfd = socket(AF_INET, SOCK_RAW, IPPROTO_RAW)) < 0 )
+	{
+		printf("Socket creation failed. Root privilages may be missing.\n");
+		return;
+	};
+
+  struct iphdr *iph = (struct iphdr *) datagram;
+  struct udphdr *udph = (struct udphdr *) (datagram + sizeof (struct ip));
+
+	//bzero(&udph, sizeof(udph));
+	udph->uh_sport = htons(local_port);
+	udph->uh_dport = htons(port);
+  sendline = datagram + sizeof(struct udphdr);
+  strcpy(sendline, "Hello");
+	udph->uh_ulen = htons(8 + strlen(sendline));
+	udph->uh_sum = 0;
+  printf("Warning! No checksum is being enforced");
+  int udp_packet_length = sizeof(struct udphdr) + strlen(sendline);
+  if( (sendto(sockfd, udph, udp_packet_length, 0, (const struct sockaddr *) &servaddr, sizeof(servaddr))) < 0)
+	{
+		printf("Sending failed\n");
+		return;
+	}
+	printf("Sent empty UDP\n");
+	socklen_t len = sizeof servaddr;
+
+	int n = recvfrom(sockfd, (char *) recvline, 1024, 0, (struct sockaddr *) &servaddr, &len);
+	recvline[n] = '\0';
+	printf("Recieved %d bytes\n", n);
+	fputs(recvline, stdout);
+	/**/
 }
 
 int main(int argc, char const *argv[])
@@ -180,7 +225,7 @@ int main(int argc, char const *argv[])
 	}
 	*/
 	//send_ping(4095);
-	send_raw_udp(4026);
+	send_raw_udp(4025);
 	//recieve_reply();
 	// printf("No ports were scanned\n");
 

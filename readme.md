@@ -62,3 +62,5 @@ https://packages.debian.org/stable/net/iputils-ping
 https://www.geeksforgeeks.org/ping-in-c/
 
 https://tuprints.ulb.tu-darmstadt.de/6243/1/TR-18.pdf
+
+https://www.binarytides.com/raw-udp-sockets-c-linux/
