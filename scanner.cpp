@@ -18,21 +18,14 @@
 #include <netinet/ip.h>
 #include "icmp.h"
 //#include <netinet/ip_icmp.h>
+#include <netinet/udp.h>
 
 
-#define PORT	4002
+//#define PORT	4002
 #define MAXLINE	1024
-/*
-struct icmphdr
-{
-	char type;
-	char code;
-	short checksum;
-	short identifier;
-	short sequence_number;
-};
-*/
 
+const char* ip_address = "130.208.243.61";
+const int local_port = 39123;
 
 // Function taken from "Unix Network Programming 2nd Edition Volume 1 - Richard Stevens"
 unsigned short in_cksum(unsigned short *addr, int len)
@@ -64,7 +57,7 @@ unsigned short in_cksum(unsigned short *addr, int len)
 }
 
 
-void send_ping()
+void send_ping(int port)
 {
 	// socket
 	int sockfd = 0;
@@ -91,16 +84,14 @@ void send_ping()
 	};
 
 	servaddr.sin_family = AF_INET;
-  servaddr.sin_port = htons(PORT);
+  servaddr.sin_port = htons(port);
 	// Converts the IPv4 address from text to binary form
-	const char* ip_address = "130.208.243.61";
-	if(inet_pton(AF_INET, ip_address , &servaddr.sin_addr)<=0)
+
+	if(inet_pton(AF_INET, ip_address , &servaddr.sin_addr) <= 0)
 	{
 		printf("\nInvalid address/ Address not supported \n");
 		return;
 	}
-
-
 
 	// sendto
 	sendto(sockfd, &icp, cc, 0, (const struct sockaddr *) &servaddr, sizeof(servaddr));
@@ -113,7 +104,53 @@ void send_ping()
   printf("Server : %i bytes recieved\n", n);
 
   close(sockfd);
+}
 
+void send_raw_udp(int port){
+	int sockfd;
+	struct sockaddr_in servaddr;
+	char recvline[1025];
+  char datagram[1024];
+  memset(datagram, 0, 1024);
+	char *sendline;
+	bzero(&servaddr, sizeof(servaddr));
+
+	servaddr.sin_family = AF_INET;
+	servaddr.sin_port = htons(port);
+	if(inet_pton(AF_INET, ip_address , &servaddr.sin_addr) <= 0)
+	{
+		printf("\nInvalid address/ Address not supported \n");
+		return;
+	}
+	if ( ( sockfd = socket(AF_INET, SOCK_RAW, IPPROTO_UDP)) < 0 )
+	{
+		printf("Socket creation failed. Root privilages may be missing.\n");
+		return;
+	};
+
+	struct udphdr *udph = (struct udphdr *) datagram;
+
+	//bzero(&udph, sizeof(udph));
+	udph->uh_sport = htons(local_port);
+	udph->uh_dport = htons(port);
+  sendline = datagram + sizeof(struct udphdr);
+  strcpy(sendline, "Hello");
+	udph->uh_ulen = htons(8 + strlen(sendline));
+	udph->uh_sum = 0;
+  int udp_packet_length = sizeof(struct udphdr) + strlen(sendline);
+  if( (sendto(sockfd, udph, udp_packet_length, 0, (const struct sockaddr *) &servaddr, sizeof(servaddr))) < 0)
+	{
+		printf("Sending failed\n");
+		return;
+	}
+	printf("Sent empty UDP\n");
+	socklen_t len = sizeof servaddr;
+
+	int n = recvfrom(sockfd, (char *) recvline, 1024, 0, (struct sockaddr *) &servaddr, &len);
+	recvline[n] = '\0';
+	printf("Recieved %d bytes\n", n);
+	fputs(recvline, stdout);
+	/**/
 }
 
 void recieve_reply(){
@@ -137,7 +174,13 @@ int main(int argc, char const *argv[])
 	int high_port = atoi(argv[3]);
 	*/
 
-	send_ping();
+	/*
+	for (int i = 4000; i < 4101; i++) {
+		send_ping(i);
+	}
+	*/
+	//send_ping(4095);
+	send_raw_udp(4026);
 	//recieve_reply();
 	// printf("No ports were scanned\n");
 
