@@ -4,7 +4,6 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <sys/time.h>
-#include <vector>
 
 using namespace std;
 
@@ -12,6 +11,40 @@ int high_port;
 int low_port;
 char *ip_address;
 struct sockaddr_in server_socket_addr; // address of server
+const int OPENPORTCOUNT = 4;
+int openPorts[OPENPORTCOUNT];
+int hiddenPorts[2];
+int portGivenByEz;
+
+// indexes of the open ports
+const int EVILPORT = 0;
+const int EZPORT = 1;
+const int CHECKSUMPORT = 2;
+const int ORACLEPORT = 3;
+
+// open port keywords
+const string EVILKEY = "evil";
+const string EZKEY = "port:";
+const string CHECKSUMKEY = "checksum";
+const string ORACLEKEY = "oracle";
+
+int getOpenPortIndex(string message)
+{
+	int portIndex = -1;
+	if (message.find(EVILKEY) != string::npos)
+		portIndex = EVILPORT;
+
+	else if (message.find(EZKEY) != string::npos)
+		portIndex = EZPORT;
+
+	else if (message.find(CHECKSUMKEY) != string::npos)
+		portIndex = CHECKSUMPORT;
+
+	else if (message.find(ORACLEKEY) != string::npos)
+		portIndex = ORACLEPORT;
+
+	return portIndex;
+}
 
 /* 
 scans UDP ports for a given address and a given port range.
@@ -69,12 +102,36 @@ int findOpenPorts()
 				cout << "Byte count received: " << byteCount << ", "
 					 << "on port: " << portno << endl;
 				cout << "-----------------------" << endl;
+
+				// put the open port in its rightful place in the array.
+				string responseString(response);
+				int portIndex = getOpenPortIndex(responseString);
+				if (portIndex < 0) {
+					perror("could not determine open port");
+					return (-1);
+				} 
+				openPorts[portIndex] = portno;
+
+				// extract the port that is given by the "ez port"
+				if (portIndex == EZPORT) {
+					int beginIndex = responseString.find(":") + 1;  
+					portGivenByEz = atoi(responseString.substr(beginIndex).c_str());
+				}
 			}
 		}
 		close(socketFd);
 	}
 
 	return 1;
+}
+
+
+void printOpenPorts()
+{
+	for (int i = 0; i < OPENPORTCOUNT; i++)
+	{
+		cout << openPorts[i] << endl;
+	}
 }
 
 int main(int argc, char *argv[])
@@ -93,6 +150,12 @@ int main(int argc, char *argv[])
 	memset(&server_socket_addr, 0, sizeof(server_socket_addr)); // Initialise memory
 	server_socket_addr.sin_family = AF_INET;					// pv4
 	server_socket_addr.sin_addr.s_addr = inet_addr(ip_address); // bind to server ip
+
+	if (findOpenPorts() > 0)
+	{
+		cout << "open ports found: " << endl;
+		printOpenPorts();
+	}
 
 	return 0;
 }
