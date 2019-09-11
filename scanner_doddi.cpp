@@ -11,7 +11,6 @@ using namespace std;
 int high_port;
 int low_port;
 char *ip_address;
-vector<int> openPorts;
 struct sockaddr_in server_socket_addr; // address of server
 
 /* 
@@ -57,7 +56,6 @@ int findOpenPorts()
 		timeout.tv_usec = 500000; // half a second
 		if (select(socketFd + 1, &sockets, NULL, NULL, &timeout) > 0)
 		{
-			openPorts.push_back(portno);
 			int byteCount = recvfrom(socketFd, response, responseSize, 0, (sockaddr *)&server_socket_addr, &socklen);
 			if (byteCount < 0)
 			{
@@ -79,14 +77,6 @@ int findOpenPorts()
 	return 1;
 }
 
-void printOpenPorts()
-{
-	for (auto it = openPorts.begin(); it != openPorts.end(); it++)
-	{
-		cout << *it << endl;
-	}
-}
-
 int main(int argc, char *argv[])
 {
 	if (argc != 4)
@@ -103,11 +93,6 @@ int main(int argc, char *argv[])
 	memset(&server_socket_addr, 0, sizeof(server_socket_addr)); // Initialise memory
 	server_socket_addr.sin_family = AF_INET;					// pv4
 	server_socket_addr.sin_addr.s_addr = inet_addr(ip_address); // bind to server ip
-
-	if(findOpenPorts()) {
-		cout << "open ports found: " << endl;
-		printOpenPorts();
-	}
 
 	return 0;
 }
