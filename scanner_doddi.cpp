@@ -4,6 +4,8 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <sys/time.h>
+#include <linux/ip.h>
+#include <linux/udp.h>
 
 using namespace std;
 
@@ -15,6 +17,7 @@ const int OPENPORTCOUNT = 4;
 int openPorts[OPENPORTCOUNT];
 int hiddenPorts[2];
 int portGivenByEz;
+int checksumGivenByPort;
 
 // indexes of the open ports
 const int EVILPORT = 0;
@@ -28,6 +31,7 @@ const string EZKEY = "port:";
 const string CHECKSUMKEY = "checksum";
 const string ORACLEKEY = "oracle";
 
+// gets the index for a specific port for the openPorts array
 int getOpenPortIndex(string message)
 {
 	int portIndex = -1;
@@ -106,16 +110,24 @@ int findOpenPorts()
 				// put the open port in its rightful place in the array.
 				string responseString(response);
 				int portIndex = getOpenPortIndex(responseString);
-				if (portIndex < 0) {
+				if (portIndex < 0)
+				{
 					perror("could not determine open port");
 					return (-1);
-				} 
+				}
 				openPorts[portIndex] = portno;
 
 				// extract the port that is given by the "ez port"
-				if (portIndex == EZPORT) {
-					int beginIndex = responseString.find(":") + 1;  
+				if (portIndex == EZPORT)
+				{
+					int beginIndex = responseString.find(":") + 1;
 					portGivenByEz = atoi(responseString.substr(beginIndex).c_str());
+				}
+				// extract the checksum that is given by the "checksum port"
+				else if (portIndex == CHECKSUMPORT)
+				{
+					int beginIndex = responseString.find("value of") + 9;
+					checksumGivenByPort = atoi(responseString.substr(beginIndex).c_str());
 				}
 			}
 		}
@@ -125,13 +137,107 @@ int findOpenPorts()
 	return 1;
 }
 
-
 void printOpenPorts()
 {
 	for (int i = 0; i < OPENPORTCOUNT; i++)
 	{
 		cout << openPorts[i] << endl;
 	}
+}
+
+string getMyIp()
+{
+	return "10.0.2.15";
+}
+
+void populateIpHdr(struct iphdr *ipHdr, char* myIp, int packetLength)
+{
+	// TODO: why 5?
+	ipHdr->ihl = 5;				   // header length
+	ipHdr->version = 4;			   // ipv4
+	ipHdr->tot_len = packetLength; // total length of packet
+	ipHdr->id = 12345;			   // just some identification
+	ipHdr->ttl = 0xFF;			   // time to live as much as possible
+	ipHdr->protocol = IPPROTO_UDP; // set to udp protocol
+	ipHdr->saddr = inet_addr(myIp);
+	ipHdr->daddr = inet_addr(ip_address);
+}
+
+void populateUdpHdr(struct udphdr *udpHdr, int myPortNo, int destPortNo, int messageSize)
+{
+	udpHdr->source = myPortNo;
+	udpHdr->dest = destPortNo;
+	udpHdr->len = sizeof(udphdr) + messageSize; // length of udp header + udp data
+	udpHdr->check = 0;
+	cout << "udp length: " << sizeof(udphdr) + messageSize << endl;
+}
+
+/*
+solve the three puzzle ports to get the 2 hidden ports
+1. "This is the port:xxxx"
+2. "I only speak with fellow evil villains. (https://en.wikipedia.org/wiki/Evil_bit)"
+3. "Please send me a message with a valid udp checksum with value of xxxxx"
+*/
+int answerMeTheseRiddlesThree()
+{
+	// first lets do the checksum puzzle
+	struct iphdr *ipHdr;
+	struct udphdr *udpHdr;
+	char *data;
+	char message[] = "knock\0";
+	int packetLength = sizeof(struct iphdr) + sizeof(struct udphdr) + sizeof(message);
+
+	// TODO: how big should this be?
+	char packet[packetLength];
+	memset(packet, 0, sizeof(packet));
+
+	// make pointers point to where they should point on the packet
+	ipHdr = (iphdr *)packet;
+	udpHdr = (udphdr *)(packet + sizeof(iphdr));
+	data = (char *)(packet + sizeof(iphdr) + sizeof(udphdr));
+
+	// write the message into its appropriate place within the packet
+	strcpy(data, message);
+
+	// set destination port
+	server_socket_addr.sin_port = htons(openPorts[CHECKSUMPORT]);
+
+	// raw socket without andy protocol header
+	int socketFd = socket(AF_INET, SOCK_RAW, IPPROTO_RAW);
+	if (socketFd < 0)
+	{
+		perror("error when creating socket");
+		return (-1);
+	}
+
+	// make headers manually included in packet
+	int opt;
+	if (setsockopt(socketFd, IPPROTO_IP, IP_HDRINCL, &opt, sizeof(opt)) < 0)
+	{
+		perror("setsockopt IP_HDRINCL error");
+		return (-1);
+	}
+
+	// get my port and my ip address
+	char myIp[16];
+	int myPort;
+	struct sockaddr_in myAddr;
+	memset(myIp, 0, sizeof(myIp));
+	socklen_t myAddrLen = sizeof(myAddr);
+	getsockname(socketFd, (struct sockaddr*) &myAddr, &myAddrLen); // get my address (the address to which the socket is bound)
+	inet_ntop(AF_INET, &myAddr.sin_addr, myIp, sizeof(myIp)); // extract the ip address from the addr
+	myPort = ntohs(myAddr.sin_port); // extract portno from addr
+
+	// add neccessary data to the headers in the packet
+	cout << "packetLength: " << packetLength << endl;
+	populateIpHdr(ipHdr, myIp, packetLength);
+	populateUdpHdr(udpHdr, myPort, openPorts[EVILPORT], sizeof(message));
+
+	// test
+	socklen_t socklen = sizeof(server_socket_addr);
+	sendto(socketFd, packet, packetLength, 0, (sockaddr *)&server_socket_addr, socklen);
+
+	return 1;
 }
 
 int main(int argc, char *argv[])
@@ -156,6 +262,8 @@ int main(int argc, char *argv[])
 		cout << "open ports found: " << endl;
 		printOpenPorts();
 	}
+
+	answerMeTheseRiddlesThree();
 
 	return 0;
 }
