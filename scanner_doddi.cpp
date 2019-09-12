@@ -4,8 +4,15 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <sys/time.h>
-#include <linux/ip.h>
-#include <linux/udp.h>
+#include "ipx.h"
+
+#ifdef __APPLE__
+		#include <netinet/ip.h>
+		#include <netinet/udp.h>
+#else
+		#include <linux/ip.h>
+		#include <linux/udp.h>
+#endif
 
 using namespace std;
 
@@ -50,7 +57,7 @@ int getOpenPortIndex(string message)
 	return portIndex;
 }
 
-/* 
+/*
 scans UDP ports for a given address and a given port range.
 prints out open port messages and details
 sets open ports vector
@@ -150,26 +157,26 @@ string getMyIp()
 	return "10.0.2.15";
 }
 
-void populateIpHdr(struct iphdr *ipHdr, char* myIp, int packetLength)
+void populateIPx(struct IPx *ipx, char* myIp, int packetLength)
 {
 	// TODO: why 5?
-	ipHdr->ihl = 5;				   // header length
-	ipHdr->version = 4;			   // ipv4
-	ipHdr->tot_len = packetLength; // total length of packet
-	ipHdr->id = 12345;			   // just some identification
-	ipHdr->ttl = 0xFF;			   // time to live as much as possible
-	ipHdr->protocol = IPPROTO_UDP; // set to udp protocol
-	ipHdr->saddr = inet_addr(myIp);
-	ipHdr->daddr = inet_addr(ip_address);
+	ipx->ihl = 5;				   // header length
+	ipx->version = 4;			   // ipv4
+	ipx->tot_len = packetLength; // total length of packet
+	ipx->id = 12345;			   // just some identification
+	ipx->ttl = 0xFF;			   // time to live as much as possible
+	ipx->protocol = IPPROTO_UDP; // set to udp protocol
+	ipx->saddr = inet_addr(myIp);
+	ipx->daddr = inet_addr(ip_address);
 }
 
-void populateUdpHdr(struct udphdr *udpHdr, int myPortNo, int destPortNo, int messageSize)
+void populateudpHdrx(struct udphdrx *udpHdrx, int myPortNo, int destPortNo, int messageSize)
 {
-	udpHdr->source = myPortNo;
-	udpHdr->dest = destPortNo;
-	udpHdr->len = sizeof(udphdr) + messageSize; // length of udp header + udp data
-	udpHdr->check = 0;
-	cout << "udp length: " << sizeof(udphdr) + messageSize << endl;
+	udpHdrx->source = myPortNo;
+	udpHdrx->dest = destPortNo;
+	udpHdrx->len = sizeof(udpHdrx) + messageSize; // length of udp header + udp data
+	udpHdrx->check = 0;
+	cout << "udp length: " << sizeof(udpHdrx) + messageSize << endl;
 }
 
 /*
@@ -181,20 +188,20 @@ solve the three puzzle ports to get the 2 hidden ports
 int answerMeTheseRiddlesThree()
 {
 	// first lets do the checksum puzzle
-	struct iphdr *ipHdr;
-	struct udphdr *udpHdr;
+	struct IPx *ipx;
+	struct udphdrx *udpHdrx;
 	char *data;
 	char message[] = "knock\0";
-	int packetLength = sizeof(struct iphdr) + sizeof(struct udphdr) + sizeof(message);
+	int packetLength = sizeof(struct IPx) + sizeof(struct udphdrx) + sizeof(message);
 
 	// TODO: how big should this be?
 	char packet[packetLength];
 	memset(packet, 0, sizeof(packet));
 
 	// make pointers point to where they should point on the packet
-	ipHdr = (iphdr *)packet;
-	udpHdr = (udphdr *)(packet + sizeof(iphdr));
-	data = (char *)(packet + sizeof(iphdr) + sizeof(udphdr));
+	ipx = (IPx *) packet;
+	udpHdrx = (udphdrx *)(packet + sizeof(ipx));
+	data = (char *)(packet + sizeof(ipx) + sizeof(udpHdrx));
 
 	// write the message into its appropriate place within the packet
 	strcpy(data, message);
@@ -230,8 +237,8 @@ int answerMeTheseRiddlesThree()
 
 	// add neccessary data to the headers in the packet
 	cout << "packetLength: " << packetLength << endl;
-	populateIpHdr(ipHdr, myIp, packetLength);
-	populateUdpHdr(udpHdr, myPort, openPorts[EVILPORT], sizeof(message));
+	populateIPx(ipx, myIp, packetLength);
+	populateudpHdrx(udpHdrx, myPort, openPorts[EVILPORT], sizeof(message));
 
 	// test
 	socklen_t socklen = sizeof(server_socket_addr);
