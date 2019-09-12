@@ -15,6 +15,7 @@ struct IPx {
     	short	tot_len;			/* total length */
     	u_short	id;			/* identification */
     	short	frag_off;			/* fragment offset field */
+	#define EVIL_BIT 0x8000 			/* evil bit */
     #define	IP_DF 0x4000			/* dont fragment flag */
     #define	IP_MF 0x2000			/* more fragments flag */
     	u_char	ttl;			/* time to live */
