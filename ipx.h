@@ -23,7 +23,7 @@ struct IPx {
       __uint32_t saddr, daddr;	/* source and dest address */
 };
 
-struct udphdrx {
+struct udpHdrx {
 	u_short	source;		/* source port */
 	u_short	dest;		/* destination port */
 	u_short	len;		/* udp length */
