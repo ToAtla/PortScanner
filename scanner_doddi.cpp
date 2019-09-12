@@ -38,6 +38,15 @@ const string EZKEY = "port:";
 const string CHECKSUMKEY = "checksum";
 const string ORACLEKEY = "oracle";
 
+struct pseudo_header
+{
+	u_int32_t source_address;
+	u_int32_t dest_address;
+	u_int8_t placeholder;
+	u_int8_t protocol;
+	u_int16_t udp_length;
+};
+
 // gets the index for a specific port for the openPorts array
 int getOpenPortIndex(string message)
 {
@@ -56,6 +65,56 @@ int getOpenPortIndex(string message)
 
 	return portIndex;
 }
+
+// From: https://www.binarytides.com/tcp-syn-portscan-in-c-with-linux-sockets/
+unsigned short csum(unsigned short *ptr,int nbytes) {
+    register long sum;
+    unsigned short oddbyte;
+    register short answer;
+
+    sum=0;
+    while(nbytes>1) {
+        sum+=*ptr++;
+        nbytes-=2;
+    }
+    if(nbytes==1) {
+        oddbyte=0;
+        *((u_char*)&oddbyte)=*(u_char*)ptr;
+        sum+=oddbyte;
+    }
+
+    sum = (sum>>16)+(sum & 0xffff);
+    sum = sum + (sum>>16);
+    answer = (short)~sum;
+
+    return(answer);
+}
+
+short calculate_udp_checksum(struct udpHdrx * udphdrx, struct IPx* ipx, char * message){
+	printf("Got this far0");
+	struct pseudo_header *psh;
+	int pseudegram_length = sizeof(struct pseudo_header) + sizeof(struct udpHdrx) + strlen(message);
+	char * pseudogram[pseudegram_length];
+
+	printf("Got this far0");
+	psh->source_address = ipx->saddr;
+	psh->dest_address = ipx->daddr;
+	psh->placeholder = 0;
+	psh->protocol = IPPROTO_UDP;
+	psh->udp_length = htons(sizeof(struct udpHdrx) + strlen(message));
+	printf("Got this far1");
+	int psize = sizeof(struct pseudo_header) + sizeof(struct udpHdrx) + strlen(message);
+	psh = (pseudo_header *) pseudogram;
+	udphdrx = (udpHdrx *) (pseudogram + sizeof(struct pseudo_header));
+	message = (char *) (pseudogram + sizeof(struct pseudo_header) + sizeof(struct udpHdrx));
+	// memcpy(pseudogram , (char*) psh , sizeof (struct pseudo_header));
+	// memcpy(pseudogram + sizeof(struct pseudo_header) , udphdrx , sizeof(struct udpHdrx) + strlen(message));
+	printf("Got this far2");
+	return csum( (unsigned short*) pseudogram , psize);
+
+	return 0;
+}
+
 
 /*
 scans UDP ports for a given address and a given port range.
@@ -160,29 +219,7 @@ string getMyIp()
 	return source_ip_address;
 }
 
-// From: https://www.binarytides.com/tcp-syn-portscan-in-c-with-linux-sockets/
-unsigned short csum(unsigned short *ptr,int nbytes) {
-    register long sum;
-    unsigned short oddbyte;
-    register short answer;
 
-    sum=0;
-    while(nbytes>1) {
-        sum+=*ptr++;
-        nbytes-=2;
-    }
-    if(nbytes==1) {
-        oddbyte=0;
-        *((u_char*)&oddbyte)=*(u_char*)ptr;
-        sum+=oddbyte;
-    }
-
-    sum = (sum>>16)+(sum & 0xffff);
-    sum = sum + (sum>>16);
-    answer = (short)~sum;
-
-    return(answer);
-}
 
 void print_packet(char * packet){
 	printf("Printing IP header\n");
@@ -313,10 +350,16 @@ int answerMeTheseRiddlesThree()
 	// add neccessary data to the headers in the packet
 	cout << "packetLength: " << packetLength << endl;
 	populateIPx(ipx, myIp, packetLength);
-	print_packet(packet);
 	ipx->check = csum ((unsigned short *) packet, ipx->tot_len >> 1);
+	printf("Populating UDP");
 	populateudpHdrx(udphdrx, myPort, openPorts[CHECKSUMPORT], sizeof(message));
-	print_packet(packet);
+	printf("Populated UDP");
+	//print_packet(packet);
+	printf("Calculating");
+	short udp_checksum = calculate_udp_checksum(udphdrx, ipx, message);
+	printf("Calculated");
+	udphdrx->check = udp_checksum;
+
 	// test
 	socklen_t socklen = sizeof(server_socket_addr);
 	int sendtoresult = sendto(socketFd, packet, packetLength, 0, (sockaddr *)&server_socket_addr, socklen);
