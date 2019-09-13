@@ -25,6 +25,7 @@ int openPorts[OPENPORTCOUNT];
 int hiddenPorts[2];
 int portGivenByEz;
 int checksumGivenByPort;
+int portGivenByEvilPort;
 
 // indexes of the open ports
 const int EVILPORT = 0;
@@ -255,25 +256,30 @@ void populateudpHdrx(struct udpHdrx *udphdrx, int myPortNo, int messageSize)
 	cout << "udp length: " << sizeof(udphdrx) + messageSize << endl;
 }
 
-void evilPuzzle(struct IPx *ipx, udpHdrx *udphdrx, int socketFd, char *packet, int packetLength, socklen_t socklen)
+int evilPuzzle(struct IPx *ipx, udpHdrx *udphdrx, int socketFd, int recvSocket, char *packet, int packetLength, socklen_t socklen)
 {
 	// change what is specifically for this puzzle
-	ipx->frag_off = htons(EVIL_BIT); // set evil bit
+	ipx->frag_off = htons(EVIL_BIT);						  // set evil bit
 	server_socket_addr.sin_port = htons(openPorts[EVILPORT]); // set port nr
-	udphdrx->dest = htons(openPorts[EVILPORT]); // set port nr
-	
+	udphdrx->dest = htons(openPorts[EVILPORT]);				  // set port nr
+
 	// send udp message to evil port
 	if (sendto(socketFd, packet, packetLength, 0, (sockaddr *)&server_socket_addr, socklen) < 0)
 	{
 		perror("Evil bit message sending failed.");
+		return -1;
 	}
-	else
-	{
-		int responseSize =  128;
-		char response[128];
-		int byteCount = recvfrom(socketFd, response, responseSize, 0, (sockaddr *)&server_socket_addr, &socklen);
-		cout << response << endl;
-	}
+
+	int responseSize = 128;
+	char response[128];
+	int byteCount = recvfrom(recvSocket, response, responseSize, 0, (sockaddr *)&server_socket_addr, &socklen);
+
+	// extract the port
+	string responseString(response);
+	int beginIndex = responseString.find("\n") + 1;
+	int returnPort = atoi(responseString.substr(beginIndex).c_str());
+
+	return returnPort;
 }
 
 /*
@@ -289,6 +295,7 @@ int answerMeTheseRiddlesThree()
 	char *data;
 	char message[] = "";
 	short packetLength = sizeof(struct IPx) + sizeof(struct udpHdrx) + sizeof(message);
+	socklen_t socklen = sizeof(server_socket_addr);
 
 	char packet[packetLength];
 	memset(packet, 0, sizeof(packet));
@@ -302,7 +309,7 @@ int answerMeTheseRiddlesThree()
 	strcpy(data, message);
 
 	// raw socket without andy protocol header
-	int socketFd = socket(AF_INET, SOCK_RAW, IPPROTO_RAW);
+	int socketFd = socket(AF_INET, SOCK_RAW, IPPROTO_UDP);
 	if (socketFd < 0)
 	{
 		perror("error when creating socket");
@@ -323,6 +330,16 @@ int answerMeTheseRiddlesThree()
 	inet_ntop(AF_INET, &local_ip, myIp, sizeof(myIp));
 	int myPort = 39123; // hard coded port
 
+	// my_addr to bind to socket
+	struct sockaddr_in my_addr;
+	my_addr.sin_family = AF_INET;
+	my_addr.sin_addr.s_addr = inet_addr(myIp);
+	my_addr.sin_port = htons(myPort);
+
+	// new socket to receive from the server.
+	int recvSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	bind(recvSocket, (struct sockaddr *)&my_addr, sizeof(my_addr));
+
 	// add neccessary data that everybody uses to the headers in the packet
 	populateIPx(ipx, myIp, packetLength);
 	populateudpHdrx(udphdrx, myPort, sizeof(message));
@@ -333,7 +350,6 @@ int answerMeTheseRiddlesThree()
 	server_socket_addr.sin_port = htons(openPorts[CHECKSUMPORT]);
 	udphdrx->dest = htons(openPorts[CHECKSUMPORT]);
 
-	socklen_t socklen = sizeof(server_socket_addr);
 	if (sendto(socketFd, packet, packetLength, 0, (sockaddr *)&server_socket_addr, socklen) < 0)
 	{
 		printf("Checksum Message sending failed");
@@ -350,7 +366,7 @@ int answerMeTheseRiddlesThree()
 	}
 
 	// evil bit
-	evilPuzzle(ipx, udphdrx, socketFd, packet, packetLength, socklen);
+	portGivenByEvilPort = evilPuzzle(ipx, udphdrx, socketFd, recvSocket, packet, packetLength, socklen);
 
 	return 1;
 }
