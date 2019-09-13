@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <sys/time.h>
 #include "ipx.h"
+#include "checksums.h"
 
 #ifdef __APPLE__
 		#include <netinet/ip.h>
@@ -160,40 +161,9 @@ string getMyIp()
 	return source_ip_address;
 }
 
-// From: https://www.binarytides.com/tcp-syn-portscan-in-c-with-linux-sockets/
-unsigned short csum(unsigned short *ptr,int nbytes) {
-    register long sum;
-    unsigned short oddbyte;
-    register short answer;
 
-    sum=0;
-    while(nbytes>1) {
-        sum+=*ptr++;
-        nbytes-=2;
-    }
-    if(nbytes==1) {
-        oddbyte=0;
-        *((u_char*)&oddbyte)=*(u_char*)ptr;
-        sum+=oddbyte;
-    }
 
-    sum = (sum>>16)+(sum & 0xffff);
-    sum = sum + (sum>>16);
-    answer = (short)~sum;
 
-    return(answer);
-}
-
-void print_packet(char * packet){
-	printf("Printing IP header\n");
-	for (size_t i = 0; i < sizeof(struct IPx) + sizeof(struct udpHdrx); i++) {
-		if(i % 4 == 0) printf("\n");
-		unsigned char* current = (unsigned char *) packet + i;
-		printf("%x ", *current);
-	}
-	printf("\n");
-
-}
 
 // Modified from: https://www.binarytides.com/tcp-syn-portscan-in-c-with-linux-sockets/
 struct in_addr get_local_address()
@@ -229,12 +199,10 @@ void populateIPx(struct IPx* ipx, char* myIp, short packetLength)
 	ipx->ihl = 5;				   // header length: 20 B which is 5 32-bit words
 	ipx->version = 4;			   // ipv4
 	ipx->tot_len = packetLength; // total length of packet
-	printf("packet length: %i\n", packetLength);
 	ipx->id = 0x00ff;			   // just some identification
 	ipx->frag_off = 0x0000;
 	ipx->ttl = 0xFF;			   // time to live as much as possible
 	ipx->protocol = IPPROTO_UDP; // set to udp protocol
-	printf("ipproto in header: %i\n", ipx->protocol);
 	ipx->check = 0;
 	ipx->saddr = inet_addr(myIp);
 	ipx->daddr = inet_addr(ip_address);
@@ -246,7 +214,6 @@ void populateudpHdrx(struct udpHdrx *udphdrx, int myPortNo, int destPortNo, int 
 	udphdrx->dest = htons(destPortNo);
 	udphdrx->len = htons(sizeof(struct udpHdrx) + messageSize); // length of udp header + udp data
 	udphdrx->check = 0;
-	cout << "udp length: " << sizeof(udphdrx) + messageSize << endl;
 }
 
 
@@ -256,14 +223,27 @@ solve the three puzzle ports to get the 2 hidden ports
 2. "I only speak with fellow evil villains. (https://en.wikipedia.org/wiki/Evil_bit)"
 3. "Please send me a message with a valid udp checksum with value of xxxxx"
 */
+char random_char(){
+		int lim = 90;
+		int min = 33;
+		return min + random() % lim;
+}
+
 int answerMeTheseRiddlesThree()
 {
 	// first lets do the checksum puzzle
 	struct IPx *ipx;
 	struct udpHdrx *udphdrx;
 	char *data;
-	char message[] = "";//"knock\0";
-	short packetLength = sizeof(struct IPx) + sizeof(struct udpHdrx) + sizeof(message);
+	// TODO cannot be longer than 20 Bytes, otherwise the checksum will be incorrect
+	unsigned short targetchecksum = 61453;
+	unsigned short udpchecksum = 0;
+	char possible_message1[] = "cu<2/3>";
+	char possible_message2[] = "`Ur[8d8uYfR";
+	char message[] = "cu<2/3>";
+	//printf("Trying message: %s\n", message);
+
+	short packetLength = sizeof(struct IPx) + sizeof(struct udpHdrx) + strlen(message);
 
 	// TODO: how big should this be?
 	char packet[packetLength];
@@ -284,7 +264,7 @@ int answerMeTheseRiddlesThree()
 	int socketFd = socket(AF_INET, SOCK_RAW, IPPROTO_RAW);
 	if (socketFd < 0)
 	{
-		perror("error when creating socket");
+		perror("error when creating socket\n");
 		return (-1);
 	}
 
@@ -292,7 +272,7 @@ int answerMeTheseRiddlesThree()
 	int opt = 1;
 	if (setsockopt(socketFd, IPPROTO_IP, IP_HDRINCL, &opt, sizeof(opt)) < 0)
 	{
-		perror("setsockopt IP_HDRINCL error");
+		perror("setsockopt IP_HDRINCL error\n");
 		return (-1);
 	}
 
@@ -301,37 +281,33 @@ int answerMeTheseRiddlesThree()
 	struct in_addr local_ip = get_local_address();
 	inet_ntop(AF_INET, &local_ip, myIp, sizeof(myIp));
 	int myPort = 39123;
-	// struct sockaddr_in myAddr;
-	// memset(myIp, 0, sizeof(myIp));
-	// myAddr.sin_addr.s_addr = get_local_address();
-	// myAddr.sin_port =
-	// socklen_t myAddrLen = sizeof(myAddr);
-	// getsockname(socketFd, (struct sockaddr*) &myAddr, &myAddrLen); // get my address (the address to which the socket is bound)
-	// inet_ntop(AF_INET, &myAddr.sin_addr, myIp, sizeof(myIp)); // extract the ip address from the addr
-	// myPort = ntohs(myAddr.sin_port); // extract portno from addr
-
 	// add neccessary data to the headers in the packet
-	cout << "packetLength: " << packetLength << endl;
+	// cout << "packetLength: " << packetLength << endl;
 	populateIPx(ipx, myIp, packetLength);
-	print_packet(packet);
 	ipx->check = csum ((unsigned short *) packet, ipx->tot_len >> 1);
-	populateudpHdrx(udphdrx, myPort, openPorts[CHECKSUMPORT], sizeof(message));
-	print_packet(packet);
+	populateudpHdrx(udphdrx, myPort, openPorts[CHECKSUMPORT], strlen(message));
+
+	//printf("Sizeof(%s) is %lu\n", message, strlen(message));
+
+	udpchecksum = calculate_udp_checksum(udphdrx, ipx, message, strlen(message));
+
+	//mshort difference = targetchecksum - udpchecksum;
+	//printf("%i - %i = %i\n", udpchecksum, targetchecksum, difference);
+	udphdrx->check = udpchecksum;
+	// if(udpchecksum == targetchecksum){
+	// 	printf("Found it!\n");
+	// 	printf("message:%s\n", message);
+	// 	printf("message_length: %lu\n", strlen(message));
+	// }
 	// test
 	socklen_t socklen = sizeof(server_socket_addr);
 	int sendtoresult = sendto(socketFd, packet, packetLength, 0, (sockaddr *)&server_socket_addr, socklen);
 	printf("Sendtoresult: %d\n", sendtoresult);
 	if( sendtoresult < 0)
 	{
-		printf("Checksum Message sending failed");
+		printf("Checksum Message sending failed\n");
 	}else{
-		printf("Checksum Message sending successful");
-
-		printf("My IP: %s\n", myIp);
-		printf("My Port: %d\n", myPort);
-		char serverIP[16];
-		inet_ntop(AF_INET, &server_socket_addr.sin_addr, serverIP, sizeof(serverIP));
-		printf("Server IP: %s\n", serverIP);
+		printf("Checksum Message sending successful\n");
 
 	}
 	return 1;
@@ -363,7 +339,7 @@ int main(int argc, char *argv[])
 	// }
 	openPorts[0] = 0;
 	openPorts[1] = 4001;
-	openPorts[2] = 4041;
+	openPorts[2] = 4042;
 	openPorts[3] = 0;
 	answerMeTheseRiddlesThree();
 
