@@ -8,11 +8,11 @@
 #include "checksums.h"
 
 #ifdef __APPLE__
-		#include <netinet/ip.h>
-		#include <netinet/udp.h>
+#include <netinet/ip.h>
+#include <netinet/udp.h>
 #else
-		#include <linux/ip.h>
-		#include <linux/udp.h>
+#include <linux/ip.h>
+#include <linux/udp.h>
 #endif
 
 using namespace std;
@@ -157,65 +157,106 @@ string getMyIp()
 {
 	// string source_ip_address = "10.0.2.15";
 	string source_ip_address = "172.30.1.9";
-	printf("Hardcoded source IP is: %s", source_ip_address.c_str() );
+	printf("Hardcoded source IP is: %s", source_ip_address.c_str());
 	return source_ip_address;
 }
-
-
-
-
 
 // Modified from: https://www.binarytides.com/tcp-syn-portscan-in-c-with-linux-sockets/
 struct in_addr get_local_address()
 {
-    char buffer[1024];
-    memset(buffer, 0, sizeof(buffer));
+	char buffer[1024];
+	memset(buffer, 0, sizeof(buffer));
 
-    int sock = socket ( AF_INET, SOCK_DGRAM, 0);
+	int sock = socket(AF_INET, SOCK_DGRAM, 0);
 
-    const char* kGoogleDnsIp = "8.8.8.8";
-    int dns_port = 53;
+	const char *kGoogleDnsIp = "8.8.8.8";
+	int dns_port = 53;
 
-    struct sockaddr_in serv;
+	struct sockaddr_in serv;
 
-    memset( &serv, 0, sizeof(serv) );
-    serv.sin_family = AF_INET;
-    serv.sin_addr.s_addr = inet_addr(kGoogleDnsIp);
-    serv.sin_port = htons( dns_port );
+	memset(&serv, 0, sizeof(serv));
+	serv.sin_family = AF_INET;
+	serv.sin_addr.s_addr = inet_addr(kGoogleDnsIp);
+	serv.sin_port = htons(dns_port);
 
-    int err = connect( sock , (const struct sockaddr*) &serv , sizeof(serv) );
+	connect(sock, (const struct sockaddr *)&serv, sizeof(serv));
 
-    struct sockaddr_in name;
-    socklen_t namelen = sizeof(name);
-    err = getsockname(sock, (struct sockaddr*) &name, &namelen);
-    close(sock);
+	struct sockaddr_in name;
+	socklen_t namelen = sizeof(name);
+	getsockname(sock, (struct sockaddr *)&name, &namelen);
+	close(sock);
 
-    return name.sin_addr;
+	return name.sin_addr;
 }
 
-
-void populateIPx(struct IPx* ipx, char* myIp, short packetLength)
+void populateIPx(struct IPx *ipx, char *myIp, char *packet, short packetLength)
 {
-	ipx->ihl = 5;				   // header length: 20 B which is 5 32-bit words
-	ipx->version = 4;			   // ipv4
+	ipx->ihl = 5;				 // header length: 20 B which is 5 32-bit words
+	ipx->version = 4;			 // ipv4
 	ipx->tot_len = packetLength; // total length of packet
-	ipx->id = 0x00ff;			   // just some identification
+	ipx->id = 0x00ff;			 // just some identification
 	ipx->frag_off = 0x0000;
-	ipx->ttl = 0xFF;			   // time to live as much as possible
+	ipx->ttl = 0xFF;			 // time to live as much as possible
 	ipx->protocol = IPPROTO_UDP; // set to udp protocol
-	ipx->check = 0;
+	ipx->check = csum((unsigned short *)packet, ipx->tot_len >> 1);
 	ipx->saddr = inet_addr(myIp);
 	ipx->daddr = inet_addr(ip_address);
 }
 
-void populateudpHdrx(struct udpHdrx *udphdrx, int myPortNo, int destPortNo, int messageSize)
+void populateudpHdrx(struct udpHdrx *udphdrx, int myPortNo, int messageSize)
 {
 	udphdrx->source = htons(myPortNo);
-	udphdrx->dest = htons(destPortNo);
+	udphdrx->dest = htons(0);									// set this later
 	udphdrx->len = htons(sizeof(struct udpHdrx) + messageSize); // length of udp header + udp data
 	udphdrx->check = 0;
 }
 
+int evilPuzzle(struct IPx *ipx, udpHdrx *udphdrx, int socketFd, int recvSocket, char *packet, int packetLength)
+{
+	// change what is specifically for this puzzle
+	ipx->frag_off = htons(0x8000);							  // set evil bit
+	server_socket_addr.sin_port = htons(openPorts[EVILPORT]); // set port nr
+	udphdrx->dest = htons(openPorts[EVILPORT]);				  // set port nr
+
+	socklen_t socklen = sizeof(server_socket_addr);
+	// send udp message to evil port
+	if (sendto(socketFd, packet, packetLength, 0, (sockaddr *)&server_socket_addr, socklen) < 0)
+	{
+		perror("Evil bit message sending failed.");
+		return -1;
+	}
+
+	int responseSize = 128;
+	char response[128];
+	recvfrom(recvSocket, response, responseSize, 0, (sockaddr *)&server_socket_addr, &socklen);
+
+	// extract the port
+	string responseString(response);
+	int beginIndex = responseString.find("\n") + 1;
+	int returnPort = atoi(responseString.substr(beginIndex).c_str());
+
+	return returnPort;
+}
+
+int checksumPuzzle(struct IPx *ipx, udpHdrx *udphdrx, int socketFd, int recvSocket, char *packet, char *message, int packetLength)
+{
+	server_socket_addr.sin_port = htons(openPorts[CHECKSUMPORT]); // set port nr
+	udphdrx->dest = htons(openPorts[CHECKSUMPORT]);				  // set port nr
+	ipx->frag_off = 0x0000;										  // dont want evil puzzle to have evil influence
+	udphdrx->check = calculate_udp_checksum(udphdrx, ipx, message, strlen(message));
+
+
+	socklen_t socklen = sizeof(server_socket_addr);
+	sendto(socketFd, packet, packetLength, 0, (sockaddr *)&server_socket_addr, socklen);
+
+	int responseSize = 128;
+	char response[128];
+	recvfrom(recvSocket, response, responseSize, 0, (sockaddr *)&server_socket_addr, &socklen);
+
+	cout << response << endl;
+
+	return 1;
+}
 
 /*
 solve the three puzzle ports to get the 2 hidden ports
@@ -223,10 +264,11 @@ solve the three puzzle ports to get the 2 hidden ports
 2. "I only speak with fellow evil villains. (https://en.wikipedia.org/wiki/Evil_bit)"
 3. "Please send me a message with a valid udp checksum with value of xxxxx"
 */
-char random_char(){
-		int lim = 90;
-		int min = 33;
-		return min + random() % lim;
+char random_char()
+{
+	int lim = 90;
+	int min = 33;
+	return min + random() % lim;
 }
 
 int answerMeTheseRiddlesThree()
@@ -236,10 +278,8 @@ int answerMeTheseRiddlesThree()
 	struct udpHdrx *udphdrx;
 	char *data;
 	// TODO cannot be longer than 20 Bytes, otherwise the checksum will be incorrect
-	unsigned short targetchecksum = 61453;
-	unsigned short udpchecksum = 0;
-	char possible_message1[] = "cu<2/3>";
-	char possible_message2[] = "`Ur[8d8uYfR";
+	//char possible_message1[] = "cu<2/3>";
+	//char possible_message2[] = "`Ur[8d8uYfR";
 	char message[] = "cu<2/3>";
 	//printf("Trying message: %s\n", message);
 
@@ -250,15 +290,12 @@ int answerMeTheseRiddlesThree()
 	memset(packet, 0, sizeof(packet));
 
 	// make pointers point to where they should point on the packet
-	ipx = (IPx *) packet;
+	ipx = (IPx *)packet;
 	udphdrx = (udpHdrx *)(packet + sizeof(struct IPx));
 	data = (char *)(packet + sizeof(struct IPx) + sizeof(struct udpHdrx));
 
 	// write the message into its appropriate place within the packet
 	strcpy(data, message);
-
-	// set destination port
-	server_socket_addr.sin_port = htons(openPorts[CHECKSUMPORT]);
 
 	// raw socket without andy protocol header
 	int socketFd = socket(AF_INET, SOCK_RAW, IPPROTO_RAW);
@@ -281,39 +318,28 @@ int answerMeTheseRiddlesThree()
 	struct in_addr local_ip = get_local_address();
 	inet_ntop(AF_INET, &local_ip, myIp, sizeof(myIp));
 	int myPort = 39123;
+
+	// my_addr to bind to socket
+	struct sockaddr_in my_addr;
+	my_addr.sin_family = AF_INET;
+	my_addr.sin_addr.s_addr = inet_addr(myIp);
+	my_addr.sin_port = htons(myPort);
+
+	// new socket to receive from the server.
+	int recvSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	bind(recvSocket, (struct sockaddr *)&my_addr, sizeof(my_addr));
+
 	// add neccessary data to the headers in the packet
-	// cout << "packetLength: " << packetLength << endl;
-	populateIPx(ipx, myIp, packetLength);
-	ipx->check = csum ((unsigned short *) packet, ipx->tot_len >> 1);
-	populateudpHdrx(udphdrx, myPort, openPorts[CHECKSUMPORT], strlen(message));
+	populateIPx(ipx, myIp, packet, packetLength);
+	populateudpHdrx(udphdrx, myPort, strlen(message));
 
-	//printf("Sizeof(%s) is %lu\n", message, strlen(message));
+	int bla = evilPuzzle(ipx, udphdrx, socketFd, recvSocket, packet, packetLength);
+	cout << "port from evil port " << bla << endl;
 
-	udpchecksum = calculate_udp_checksum(udphdrx, ipx, message, strlen(message));
+	checksumPuzzle(ipx, udphdrx, socketFd, recvSocket, packet, message, packetLength);
 
-	//mshort difference = targetchecksum - udpchecksum;
-	//printf("%i - %i = %i\n", udpchecksum, targetchecksum, difference);
-	udphdrx->check = udpchecksum;
-	// if(udpchecksum == targetchecksum){
-	// 	printf("Found it!\n");
-	// 	printf("message:%s\n", message);
-	// 	printf("message_length: %lu\n", strlen(message));
-	// }
-	// test
-	socklen_t socklen = sizeof(server_socket_addr);
-	int sendtoresult = sendto(socketFd, packet, packetLength, 0, (sockaddr *)&server_socket_addr, socklen);
-	printf("Sendtoresult: %d\n", sendtoresult);
-	if( sendtoresult < 0)
-	{
-		printf("Checksum Message sending failed\n");
-	}else{
-		printf("Checksum Message sending successful\n");
-
-	}
 	return 1;
 }
-
-
 
 int main(int argc, char *argv[])
 {
@@ -332,15 +358,15 @@ int main(int argc, char *argv[])
 	server_socket_addr.sin_family = AF_INET;					// pv4
 	server_socket_addr.sin_addr.s_addr = inet_addr(ip_address); // bind to server ip
 
-	// if (findOpenPorts() > 0)
-	// {
-	// 	cout << "open ports found: " << endl;
-	// 	printOpenPorts();
-	// }
-	openPorts[0] = 0;
-	openPorts[1] = 4001;
-	openPorts[2] = 4042;
-	openPorts[3] = 0;
+	if (findOpenPorts() > 0)
+	{
+		cout << "open ports found: " << endl;
+		printOpenPorts();
+	}
+	//openPorts[0] = 0;
+	//openPorts[1] = 4001;
+	//openPorts[2] = 4042;
+	//openPorts[3] = 0;
 	answerMeTheseRiddlesThree();
 
 	return 0;
