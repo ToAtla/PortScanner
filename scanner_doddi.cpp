@@ -24,18 +24,16 @@ int low_port;
 char *ip_address;
 struct sockaddr_in server_socket_addr; // address of server
 const int OPENPORTCOUNT = 4;
-int openPorts[OPENPORTCOUNT];
+int open_ports[OPENPORTCOUNT];
+const int KNOCKCOUNT = 5; // I'm hoping the amount of knocks is constant
+int knock_sequence[KNOCKCOUNT];
 int hiddenPorts[2];
-int portGivenByEz;
-int checksumGivenByPort;
-int target_checksum = htons(61453);
+int target_checksum;
+int easy_secret = 0;
+int evil_secret = 0;
 bool VERBOSE = 0;
+enum OPENPORTS { EVILPORT, EZPORT, CHECKSUMPORT, ORACLEPORT };
 
-// indexes of the open ports
-const int EVILPORT = 0;
-const int EZPORT = 1;
-const int CHECKSUMPORT = 2;
-const int ORACLEPORT = 3;
 
 // open port keywords
 const std::string EVILKEY = "evil";
@@ -43,8 +41,17 @@ const std::string EZKEY = "port:";
 const std::string CHECKSUMKEY = "checksum";
 const std::string ORACLEKEY = "oracle";
 
+int num_of_found_ports(){
+	int num = 0;
+	for (size_t i = 0; i < OPENPORTCOUNT; i++) {
+		if(open_ports[i] != 0){
+			num++;
+		}
+	}
+	return num;
+}
 
-// gets the index for a specific port for the openPorts array
+// gets the index for a specific port for the open_ports array
 int getOpenPortIndex(std::string message)
 {
 	int portIndex = -1;
@@ -70,6 +77,10 @@ sets open ports vector
 */
 int findOpenPorts()
 {
+	if(VERBOSE){
+		printf("Scanning Ports\n");
+	}
+	int ports_found = 0;
 	// TODO: if a udp thing drops the packet of an open port, what to do?
 	// iterate through each portnumber in the range given
 	for (int portno = low_port; portno <= high_port; portno++)
@@ -128,43 +139,40 @@ int findOpenPorts()
 					perror("could not determine open port");
 					return (-1);
 				}
-				openPorts[portIndex] = portno;
-
+				open_ports[portIndex] = portno;
 				// extract the port that is given by the "ez port"
 				if (portIndex == EZPORT)
 				{
 					int beginIndex = responseString.find(":") + 1;
-					portGivenByEz = atoi(responseString.substr(beginIndex).c_str());
+					easy_secret = atoi(responseString.substr(beginIndex).c_str());
+					if(VERBOSE){
+						printf("Port obtained from easy port: %i\n", easy_secret);
+					}
 				}
 				// extract the checksum that is given by the "checksum port"
 				else if (portIndex == CHECKSUMPORT)
 				{
 					int beginIndex = responseString.find("value of") + 9;
-					checksumGivenByPort = atoi(responseString.substr(beginIndex).c_str());
+					target_checksum = atoi(responseString.substr(beginIndex).c_str());
+					// Change if Big Endian is wished
+					target_checksum = htons(target_checksum);
 				}
+				ports_found++;
 			}
 		}
 		close(socketFd);
 	}
-
-	return 1;
+	return ports_found;
 }
 
 void printOpenPorts()
 {
 	for (int i = 0; i < OPENPORTCOUNT; i++)
 	{
-		std::cout << openPorts[i] << std::endl;
+		std::cout << open_ports[i] << std::endl;
 	}
 }
 
-std::string getMyIp()
-{
-	// std::string source_ip_address = "10.0.2.15";
-	std::string source_ip_address = "172.30.1.9";
-	printf("Hardcoded source IP is: %s", source_ip_address.c_str());
-	return source_ip_address;
-}
 
 // Modified from: https://www.binarytides.com/tcp-syn-portscan-in-c-with-linux-sockets/
 struct in_addr get_local_address()
@@ -273,7 +281,7 @@ std::string find_checksum_message(int &message_length){
 		populateIPx(ipx, myIp, packet, packetLength);
 		populateudpHdrx(udphdrx, myPort, strlen(message));
 
-		udphdrx->dest = htons(openPorts[CHECKSUMPORT]);				  // set port nr
+		udphdrx->dest = htons(open_ports[CHECKSUMPORT]);				  // set port nr
 		ipx->frag_off = 0x0000;										  // dont want evil puzzle to have evil influence
 		calculated_checksum = calculate_udp_checksum(udphdrx, ipx, message, message_length);
 		udphdrx->check = calculated_checksum;
@@ -295,8 +303,8 @@ int evilPuzzle(struct IPx *ipx, udpHdrx *udphdrx, int socketFd, int recvSocket, 
 	}
 	// change what is specifically for this puzzle
 	ipx->frag_off = 0x8000;							  // set evil bit
-	server_socket_addr.sin_port = htons(openPorts[EVILPORT]); // set port nr
-	udphdrx->dest = htons(openPorts[EVILPORT]);				  // set port nr
+	server_socket_addr.sin_port = htons(open_ports[EVILPORT]); // set port nr
+	udphdrx->dest = htons(open_ports[EVILPORT]);				  // set port nr
 
 	socklen_t socklen = sizeof(server_socket_addr);
 	// send udp message to evil port
@@ -334,8 +342,8 @@ int checksumPuzzle(struct IPx *ipx, udpHdrx *udphdrx, int socketFd, int recvSock
 	if(VERBOSE){
 		printf("Solving Checksum Puzzle\n");
 	}
-	server_socket_addr.sin_port = htons(openPorts[CHECKSUMPORT]); // set port nr
-	udphdrx->dest = htons(openPorts[CHECKSUMPORT]);				  // set port nr
+	server_socket_addr.sin_port = htons(open_ports[CHECKSUMPORT]); // set port nr
+	udphdrx->dest = htons(open_ports[CHECKSUMPORT]);				  // set port nr
 	ipx->frag_off = 0x0000;										  // dont want evil puzzle to have evil influence
 
 	udphdrx->check = calculate_udp_checksum(udphdrx, ipx, message, strlen(message));
@@ -381,7 +389,7 @@ void recursionThing(int indexAt, char *message, int bottom, struct IPx *ipx, udp
 		{
 			//strcpy(dataptr, message);
 			//
-			//udphdrx->dest = htons(openPorts[CHECKSUMPORT]); // set port nr
+			//udphdrx->dest = htons(open_ports[CHECKSUMPORT]); // set port nr
 			//ipx->frag_off = 0x0000;							// dont want evil puzzle to have evil influence
 			//
 			//unsigned short check = htons(calculate_udp_checksum(udphdrx, ipx, message, sizeof(message)));
@@ -403,7 +411,6 @@ void recursionThing(int indexAt, char *message, int bottom, struct IPx *ipx, udp
 
 int answerMeTheseRiddlesThree()
 {
-
 	struct IPx *ipx;
 	struct udpHdrx *udphdrx;
 	char *data;
@@ -474,11 +481,131 @@ int answerMeTheseRiddlesThree()
 	populateIPx(ipx, myIp, packet, packetLength);
 	populateudpHdrx(udphdrx, myPort, message_char_amount);
 
-	int evil_port = evilPuzzle(ipx, udphdrx, socketFd, recvSocket, packet, packetLength);
-	std::cout << "port from evil port " << evil_port << std::endl;
+	evil_secret = evilPuzzle(ipx, udphdrx, socketFd, recvSocket, packet, packetLength);
+	if(VERBOSE){
+		printf("Port obtaind from EvilPort: %i\n", evil_secret);
+	}
 
 	checksumPuzzle(ipx, udphdrx, socketFd, recvSocket, packet, message, packetLength);
 
+
+	return 1;
+}
+
+int approach_oracle()
+{
+	int message_char_amount = 9;
+	std::string port_string = std::to_string(evil_secret) + "," + std::to_string(easy_secret);
+	char message[message_char_amount];
+	strcpy(message, port_string.c_str());
+
+	int socketFd = socket(AF_INET, SOCK_DGRAM, 0);
+	if( socketFd < 0){
+		printf("Socket creation failed\n");
+		return -1;
+	}else{
+		if(VERBOSE){
+			printf("Socket creation succeeded\n");
+		}
+	}
+	server_socket_addr.sin_port = htons(open_ports[ORACLEPORT]);
+
+	if( sendto(socketFd, message, message_char_amount, 0,(struct sockaddr *) &server_socket_addr, sizeof(server_socket_addr)) < 0 ){
+		printf("Approaching the Oracle failed\n");
+		return -1;
+	}else{
+		if(VERBOSE){
+			printf("Approaching the Oracle succeeded\n");
+		}
+	}
+
+	int buffersize = 128;
+	char buffer[buffersize];
+	socklen_t socklen = sizeof(server_socket_addr);
+	int bytes = recvfrom(socketFd, buffer, buffersize, 0, (struct sockaddr * ) &server_socket_addr, &socklen);
+	if( bytes <  0){
+		printf("Receiving from the Oracle failed\n");
+		return -1;
+	}else{
+		if(VERBOSE){
+			printf("Receiving from Oracle succeeded\n");
+		}
+	}
+	buffer[bytes] = '\0';
+	printf("Knock in this order:\n");
+	fputs(buffer, stdout);
+	printf("\n");
+
+	std::string knockorder(buffer);
+	int index = 0;
+	for (size_t i = 0; i < KNOCKCOUNT; i++) {
+		knock_sequence[i] = atoi( knockorder.substr(index, index + 4).c_str() );
+		index += 5;
+	}
+	for (size_t i = 0; i < KNOCKCOUNT; i++) {
+		std::cout << knock_sequence[i] << std::endl;
+	}
+	return 1;
+}
+
+int secret_knock(){
+	int message_char_amount = 5;
+	std::string knock = "knock";
+	char message[5];
+	strcpy(message, knock.c_str());
+
+	int socketFd = socket(AF_INET, SOCK_DGRAM, 0);
+	if( socketFd < 0){
+		printf("Socket creation failed\n");
+		return -1;
+	}else{
+		if(VERBOSE){
+			printf("Socket creation succeeded\n");
+		}
+	}
+	for (size_t i = 0; i < KNOCKCOUNT - 1; i++) {
+		server_socket_addr.sin_port = htons(knock_sequence[i]);
+		if( sendto(socketFd, message, message_char_amount, 0,(struct sockaddr *) &server_socket_addr, sizeof(server_socket_addr)) < 0 ){
+			printf("Knock number %zu failed\n", i+1);
+			return -1;
+		}else{
+			if(VERBOSE){
+				printf("Knock number %zu succeeded\n", i+1);
+			}
+		}
+	}
+
+	server_socket_addr.sin_port = htons(knock_sequence[KNOCKCOUNT - 1]);
+	std::string secret_phrase = "INSERT SECRET PHRASE";
+	char secret_message[strlen(message)];
+	strcpy(secret_message, secret_phrase.c_str());
+	if( sendto(socketFd, secret_message, strlen(message), 0,(struct sockaddr *) &server_socket_addr, sizeof(server_socket_addr)) < 0 ){
+		printf("Last Knock Failed\n");
+		return -1;
+	}else{
+		if(VERBOSE){
+			printf("Last Knock succeeded\n");
+		}
+	}
+
+
+
+	int buffersize = 128;
+	char buffer[buffersize];
+	socklen_t socklen = sizeof(server_socket_addr);
+	int bytes = recvfrom(socketFd, buffer, buffersize, 0, (struct sockaddr * ) &server_socket_addr, &socklen);
+	if( bytes <  0){
+		printf("Receiving from the Last Knock failed\n");
+		return -1;
+	}else{
+		if(VERBOSE){
+			printf("Receiving from Last Knock succeeded\n");
+		}
+	}
+	buffer[bytes] = '\0';
+
+	fputs(buffer, stdout);
+	printf("\n");
 	return 1;
 }
 
@@ -499,18 +626,25 @@ int main(int argc, char *argv[])
 	memset(&server_socket_addr, 0, sizeof(server_socket_addr)); // Initialise memory
 	server_socket_addr.sin_family = AF_INET;					// pv4
 	server_socket_addr.sin_addr.s_addr = inet_addr(ip_address); // bind to server ip
-
-	// if (findOpenPorts() > 0)
-	// {
-	// 	std::cout << "open ports found: " << std::endl;
-	// 	printOpenPorts();
-	// }
-	openPorts[EVILPORT] = 4097;
-	openPorts[ORACLEPORT] = 4042;
-	openPorts[CHECKSUMPORT] = 4098;
-	openPorts[EZPORT] = 0;
+	findOpenPorts();
+	while(num_of_found_ports() != 4){
+		if(VERBOSE){
+			printf("We are still missing one or more of the 4 open ports.\n");
+		}
+		findOpenPorts();
+	}
+	if(VERBOSE){
+		printf("Found the following ports:\n");
+		printOpenPorts();
+	}
+	// open_ports[EVILPORT] = 4097;
+	// open_ports[ORACLEPORT] = 4042;
+	// open_ports[CHECKSUMPORT] = 4098;
+	// open_ports[EZPORT] = 4099;
 
 	answerMeTheseRiddlesThree();
+	approach_oracle();
+	secret_knock();
 
 	return 0;
 }

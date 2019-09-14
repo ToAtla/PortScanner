@@ -9,9 +9,9 @@ struct pseudo_header
 
 // From: https://www.binarytides.com/tcp-syn-portscan-in-c-with-linux-sockets/
 unsigned short csum(unsigned short *ptr,int nbytes) {
-    register long sum;
+    long sum;
     unsigned short oddbyte;
-    register short answer;
+    short answer;
 
     sum=0;
     while(nbytes>1) {
