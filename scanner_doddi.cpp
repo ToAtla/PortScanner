@@ -6,6 +6,7 @@
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <stdlib.h>
 #include "ipx.h"
 #include "checksums.h"
 
@@ -27,7 +28,7 @@ int openPorts[OPENPORTCOUNT];
 int hiddenPorts[2];
 int portGivenByEz;
 int checksumGivenByPort;
-int target_checksum = 61453;
+int target_checksum = htons(61453);
 bool VERBOSE = 0;
 
 // indexes of the open ports
@@ -309,11 +310,12 @@ int evilPuzzle(struct IPx *ipx, udpHdrx *udphdrx, int socketFd, int recvSocket, 
 		}
 	}
 
-
 	int responseSize = 128;
 	char response[128];
-	if( (recvfrom(socketFd, (char *) response, responseSize, 0, (sockaddr *)&server_socket_addr, &socklen)) < 0){
+
+	if( (recvfrom(recvSocket, (char *) response, responseSize, 0, (sockaddr *)&server_socket_addr, &socklen)) < 0){
 			printf("Failed to recieve Evil reply\n");
+			return -1;
 	}else{
 		if(VERBOSE){
 			printf("Evil Message Recieved\n");
@@ -408,10 +410,10 @@ int answerMeTheseRiddlesThree()
 	// TODO cannot be longer than 20 Bytes, otherwise the checksum will be incorrect
 	//char possible_message1[] = "cu<2/3>";
 	//char possible_message2[] = "`Ur[8d8uYfR";
-	// int message_char_amount = 0;
-	// std::string checksum_string = find_checksum_message(message_char_amount);
-	int message_char_amount = 12;
-	std::string checksum_string = "q4cc`$aERzNc";
+	int message_char_amount = 0;
+	std::string checksum_string = find_checksum_message(message_char_amount);
+	// int message_char_amount = 12;
+	// std::string checksum_string = "q4cc`$aERzNc";
 	char message[message_char_amount];
 	strcpy(message, checksum_string.c_str());
 	//printf("Trying message: %s\n", message);
@@ -460,8 +462,7 @@ int answerMeTheseRiddlesThree()
 
 	// new socket to receive from the server.
 	int recvSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-	int res = bind(recvSocket, (struct sockaddr *) &my_addr, (socklen_t) sizeof(my_addr));
-  if(  res < 0 ){
+  if( bind(recvSocket, (struct sockaddr *) &my_addr, (socklen_t) sizeof(my_addr)) < 0 ){
 			printf("Failed to bind recvsocket to localport\n");
 	}else{
 		if(VERBOSE){
@@ -473,8 +474,8 @@ int answerMeTheseRiddlesThree()
 	populateIPx(ipx, myIp, packet, packetLength);
 	populateudpHdrx(udphdrx, myPort, message_char_amount);
 
-	int bla = evilPuzzle(ipx, udphdrx, socketFd, recvSocket, packet, packetLength);
-	std::cout << "port from evil port " << bla << std::endl;
+	int evil_port = evilPuzzle(ipx, udphdrx, socketFd, recvSocket, packet, packetLength);
+	std::cout << "port from evil port " << evil_port << std::endl;
 
 	checksumPuzzle(ipx, udphdrx, socketFd, recvSocket, packet, message, packetLength);
 
