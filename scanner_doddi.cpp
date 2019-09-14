@@ -26,6 +26,8 @@ int openPorts[OPENPORTCOUNT];
 int hiddenPorts[2];
 int portGivenByEz;
 int checksumGivenByPort;
+int target_checksum = 61453;
+bool VERBOSE = 0;
 
 // indexes of the open ports
 const int EVILPORT = 0;
@@ -38,6 +40,7 @@ const string EVILKEY = "evil";
 const string EZKEY = "port:";
 const string CHECKSUMKEY = "checksum";
 const string ORACLEKEY = "oracle";
+
 
 // gets the index for a specific port for the openPorts array
 int getOpenPortIndex(string message)
@@ -211,6 +214,78 @@ void populateudpHdrx(struct udpHdrx *udphdrx, int myPortNo, int messageSize)
 	udphdrx->check = 0;
 }
 
+char random_char()
+{
+	int lim = 90;
+	int min = 33;
+	return min + random() % lim;
+}
+
+
+string find_checksum_message(int &message_length){
+	int calculated_checksum = 0;
+	char message[20];
+	if(VERBOSE){
+		printf("Searching for message\n");
+	}
+	while (calculated_checksum != target_checksum) {
+
+		// first lets do the checksum puzzle
+		struct IPx *ipx;
+		struct udpHdrx *udphdrx;
+		char *data;
+		// TODO cannot be longer than 20 Bytes, otherwise the checksum will be incorrect
+		message_length = random() % 20;
+
+		for (size_t i = 0; i < message_length; i++) {
+			message[i] = random_char();
+		}
+		//not part of the message, just to end itm
+		message[message_length] = '\0';
+		// char possible_message1[] = "cu<2/3>";
+		// char possible_message2[] = "`Ur[8d8uYfR";
+		// char message[] = "cu<2/3>";
+		// printf("Trying message: %s\n", message);
+
+		short packetLength = sizeof(struct IPx) + sizeof(struct udpHdrx) + message_length;
+
+		// TODO: how big should this be?
+		char packet[packetLength];
+		memset(packet, 0, sizeof(packet));
+
+		// make pointers point to where they should point on the packet
+		ipx = (IPx *)packet;
+		udphdrx = (udpHdrx *)(packet + sizeof(struct IPx));
+		data = (char *)(packet + sizeof(struct IPx) + sizeof(struct udpHdrx));
+
+		// write the message into its appropriate place within the packet
+		strcpy(data, message);
+
+		// get my port and my ip address
+		char myIp[16];
+		struct in_addr local_ip = get_local_address();
+		inet_ntop(AF_INET, &local_ip, myIp, sizeof(myIp));
+		int myPort = 39123;
+
+		// add neccessary data to the headers in the packet
+		populateIPx(ipx, myIp, packet, packetLength);
+		populateudpHdrx(udphdrx, myPort, strlen(message));
+
+		udphdrx->dest = htons(openPorts[CHECKSUMPORT]);				  // set port nr
+		ipx->frag_off = 0x0000;										  // dont want evil puzzle to have evil influence
+		calculated_checksum = calculate_udp_checksum(udphdrx, ipx, message, message_length);
+		udphdrx->check = calculated_checksum;
+	}
+	if(VERBOSE){
+		printf("Message found: %s of length %d\n", message, message_length);
+	}
+	string return_string(message);
+	return message;
+
+}
+
+
+
 int evilPuzzle(struct IPx *ipx, udpHdrx *udphdrx, int socketFd, int recvSocket, char *packet, int packetLength)
 {
 	// change what is specifically for this puzzle
@@ -264,12 +339,6 @@ solve the three puzzle ports to get the 2 hidden ports
 2. "I only speak with fellow evil villains. (https://en.wikipedia.org/wiki/Evil_bit)"
 3. "Please send me a message with a valid udp checksum with value of xxxxx"
 */
-char random_char()
-{
-	int lim = 90;
-	int min = 33;
-	return min + random() % lim;
-}
 
 // when you call this function make indexAt = 0, bottom be the messageSize-1, gotit is false, dataptr is data
 void recursionThing(int indexAt, char *message, int bottom, struct IPx *ipx, udpHdrx *udphdrx, char *packet, char *dataptr, bool gotIt)
@@ -378,6 +447,7 @@ int answerMeTheseRiddlesThree()
 
 int main(int argc, char *argv[])
 {
+	VERBOSE = 1;
 	if (argc != 4)
 	{
 		printf("Usage: ./scanner <ip_address> <low_start> <high_end>\n");
@@ -393,15 +463,17 @@ int main(int argc, char *argv[])
 	server_socket_addr.sin_family = AF_INET;					// pv4
 	server_socket_addr.sin_addr.s_addr = inet_addr(ip_address); // bind to server ip
 
-	if (findOpenPorts() > 0)
-	{
-		cout << "open ports found: " << endl;
-		printOpenPorts();
-	}
-	//openPorts[0] = 0;
-	//openPorts[1] = 4001;
-	//openPorts[2] = 4042;
-	//openPorts[3] = 0;
+	// if (findOpenPorts() > 0)
+	// {
+	// 	cout << "open ports found: " << endl;
+	// 	printOpenPorts();
+	// }
+	openPorts[EVILPORT] = 4097;
+	openPorts[ORACLEPORT] = 4042;
+	openPorts[CHECKSUMPORT] = 4098;
+	openPorts[EZPORT] = 0;
+	int a = 0;
+	find_checksum_message(a);
 	answerMeTheseRiddlesThree();
 
 	return 0;
