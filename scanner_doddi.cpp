@@ -90,11 +90,9 @@ int findOpenPorts()
 		printf("Scanning Ports\n");
 	}
 	int ports_found = 0;
-	// TODO: if a udp thing drops the packet of an open port, what to do?
 	// iterate through each portnumber in the range given
 	for (int portno = low_port; portno <= high_port; portno++)
 	{
-		// TODO: why does this have to  be inside the for loop?
 		// socket to send to udp ports with IPv4 protocol
 		int socketFd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 		if (socketFd < 0)
@@ -112,15 +110,20 @@ int findOpenPorts()
 
 		// send std::string to server
 		std::string sendString = "knock";
-		sendto(socketFd, sendString.c_str(), sendString.size() + 1, 0, (sockaddr *)&server_socket_addr, socklen);
+		if (sendto(socketFd, sendString.c_str(), sendString.size() + 1, 0, (sockaddr *)&server_socket_addr, socklen) < 0)
+		{
+			if (VERBOSE)
+			{
+				std::cout << "send in port scanner failed" << std::endl;
+			}
+		}
 
 		// initalize the response buffer
-		int responseSize = 6000;
+		int responseSize = 1024;
 		char response[responseSize];
 		memset(response, 0, responseSize); // zero initialize char array
 
 		// select socketFd if there is some data to be read within the timout
-		// TODO: whats a good timeout?
 		struct timeval timeout;
 		timeout.tv_sec = 0;
 		timeout.tv_usec = 500000; // half a second
@@ -211,6 +214,7 @@ struct in_addr get_local_address()
 	return name.sin_addr;
 }
 
+// populate standard things in the ip header
 void populateIPx(struct IPx *ipx, char *myIp, char *packet, short packetLength)
 {
 	ipx->ihl = 5;				 // header length: 20 B which is 5 32-bit words
@@ -225,6 +229,7 @@ void populateIPx(struct IPx *ipx, char *myIp, char *packet, short packetLength)
 	ipx->daddr = inet_addr(ip_address);
 }
 
+// populate standard things in the udp header
 void populateudpHdrx(struct udpHdrx *udphdrx, int myPortNo, int messageSize)
 {
 	udphdrx->source = htons(myPortNo);
@@ -240,6 +245,10 @@ char random_char()
 	return min + random() % lim;
 }
 
+/*
+genereates a random string of a random length
+and checks if if yielded checksum is the same as the target checksum given by the "checksum port"
+ */
 std::string find_checksum_message(int &message_length)
 {
 	int calculated_checksum = 0;
@@ -256,10 +265,10 @@ std::string find_checksum_message(int &message_length)
 		char *data;
 		// TODO cannot be longer than 20 Bytes, otherwise the checksum will be incorrect
 		message_length = random() % 20;
-		
-		char* message = new char[message_length+1];
 
-		for (size_t i = 0; i < message_length; i++)
+		char *message = new char[message_length + 1];
+
+		for (int i = 0; i < message_length; i++)
 		{
 			message[i] = random_char();
 		}
@@ -272,7 +281,6 @@ std::string find_checksum_message(int &message_length)
 
 		short packetLength = sizeof(struct IPx) + sizeof(struct udpHdrx) + message_length;
 
-		// TODO: how big should this be?
 		char packet[packetLength];
 		memset(packet, 0, sizeof(packet));
 
@@ -298,7 +306,6 @@ std::string find_checksum_message(int &message_length)
 		ipx->frag_off = 0x0000;							 // dont want evil puzzle to have evil influence
 		calculated_checksum = calculate_udp_checksum(udphdrx, ipx, message, message_length);
 
-		
 		if (calculated_checksum == target_checksum)
 		{
 			if (VERBOSE)
@@ -311,6 +318,9 @@ std::string find_checksum_message(int &message_length)
 	}
 }
 
+/*
+	sends a udp message to the evil server with the evil bit in place
+ */
 int evilPuzzle(struct IPx *ipx, udpHdrx *udphdrx, int socketFd, int recvSocket, char *packet, int packetLength)
 {
 	if (VERBOSE)
@@ -318,7 +328,7 @@ int evilPuzzle(struct IPx *ipx, udpHdrx *udphdrx, int socketFd, int recvSocket, 
 		printf("Solving Evil Puzzle\n");
 	}
 	// change what is specifically for this puzzle
-	ipx->frag_off = htons(0x8000);									   // set evil bit
+	ipx->frag_off = htons(0x8000);							   // set evil bit
 	server_socket_addr.sin_port = htons(open_ports[EVILPORT]); // set port nr
 	udphdrx->dest = htons(open_ports[EVILPORT]);			   // set port nr
 
@@ -360,6 +370,9 @@ int evilPuzzle(struct IPx *ipx, udpHdrx *udphdrx, int socketFd, int recvSocket, 
 	return returnPort;
 }
 
+/*
+	sends a udp message to the checksum port with the requested checksum
+ */
 std::string checksumPuzzle(struct IPx *ipx, udpHdrx *udphdrx, int socketFd, int recvSocket, char *packet, char *message, int packetLength)
 {
 	if (VERBOSE)
@@ -377,7 +390,11 @@ std::string checksumPuzzle(struct IPx *ipx, udpHdrx *udphdrx, int socketFd, int 
 	{
 		printf("Sending Checksum Message\n");
 	}
-	sendto(socketFd, packet, packetLength, 0, (sockaddr *)&server_socket_addr, socklen);
+	if (sendto(socketFd, packet, packetLength, 0, (sockaddr *)&server_socket_addr, socklen) < 0)
+	{
+		printf("Failed to send checksum reply");
+		return NULL;
+	}
 
 	int responseSize = 128;
 	char response[128];
@@ -385,7 +402,10 @@ std::string checksumPuzzle(struct IPx *ipx, udpHdrx *udphdrx, int socketFd, int 
 	{
 		printf("Recieving Checksum Message\n");
 	}
-	recvfrom(recvSocket, response, responseSize, 0, (sockaddr *)&server_socket_addr, &socklen);
+	if (recvfrom(recvSocket, response, responseSize, 0, (sockaddr *)&server_socket_addr, &socklen) < 0)
+	{
+		printf("Failed to receive checksum reply");
+	}
 
 	std::cout << response << std::endl;
 	return "How many chucks would a woodchuck chuck, if a woodchuck could chuck wood!";
@@ -415,7 +435,6 @@ int answerMeTheseRiddlesThree()
 
 	short packetLength = sizeof(struct IPx) + sizeof(struct udpHdrx) + message_char_amount;
 
-	// TODO: how big should this be?
 	char packet[packetLength];
 	memset(packet, 0, sizeof(packet));
 
@@ -484,6 +503,7 @@ int answerMeTheseRiddlesThree()
 	return 1;
 }
 
+// send oracle the right sequence of ports and get order and number of knocks to use
 int approach_oracle()
 {
 	int message_char_amount = 9;
@@ -550,6 +570,7 @@ int approach_oracle()
 	return 1;
 }
 
+// knock on hidden ports
 int secret_knock()
 {
 	int message_char_amount = 5;
@@ -588,8 +609,8 @@ int secret_knock()
 	}
 
 	server_socket_addr.sin_port = htons(knock_sequence[KNOCKCOUNT - 1]);
-	int secret_phrase_length = 73; // don't hate me for hardcoding here
-	char secret_message[secret_phrase_length];
+	int secret_phrase_length = strlen(secret_phrase.c_str());
+	char *secret_message = new char[secret_phrase_length];
 	strcpy(secret_message, secret_phrase.c_str());
 	if (sendto(socketFd, secret_message, secret_phrase_length, 0, (struct sockaddr *)&server_socket_addr, sizeof(server_socket_addr)) < 0)
 	{
@@ -645,13 +666,17 @@ int main(int argc, char *argv[])
 	server_socket_addr.sin_family = AF_INET;					// pv4
 	server_socket_addr.sin_addr.s_addr = inet_addr(ip_address); // bind to server ip
 	findOpenPorts();
-	while(num_of_found_ports() != 4){
-		if(VERBOSE){
+	// if we didnt get all ports then try again.
+	while (num_of_found_ports() != 4)
+	{
+		if (VERBOSE)
+		{
 			printf("We are still missing one or more of the 4 open ports.\n");
 		}
 		findOpenPorts();
 	}
-	if(VERBOSE){
+	if (VERBOSE)
+	{
 		printf("Found the following ports:\n");
 		printOpenPorts();
 	}
