@@ -31,6 +31,7 @@ int hiddenPorts[2];
 int target_checksum;
 int easy_secret = 0;
 int evil_secret = 0;
+std::string secret_phrase;
 bool VERBOSE = 0;
 enum OPENPORTS { EVILPORT, EZPORT, CHECKSUMPORT, ORACLEPORT };
 
@@ -337,7 +338,7 @@ int evilPuzzle(struct IPx *ipx, udpHdrx *udphdrx, int socketFd, int recvSocket, 
 	return returnPort;
 }
 
-int checksumPuzzle(struct IPx *ipx, udpHdrx *udphdrx, int socketFd, int recvSocket, char *packet, char *message, int packetLength)
+std::string checksumPuzzle(struct IPx *ipx, udpHdrx *udphdrx, int socketFd, int recvSocket, char *packet, char *message, int packetLength)
 {
 	if(VERBOSE){
 		printf("Solving Checksum Puzzle\n");
@@ -363,8 +364,7 @@ int checksumPuzzle(struct IPx *ipx, udpHdrx *udphdrx, int socketFd, int recvSock
 	recvfrom(recvSocket, response, responseSize, 0, (sockaddr *)&server_socket_addr, &socklen);
 
 	std::cout << response << std::endl;
-
-	return 1;
+	return "How many chucks would a woodchuck chuck, if a woodchuck could chuck wood!";
 }
 
 /*
@@ -486,7 +486,7 @@ int answerMeTheseRiddlesThree()
 		printf("Port obtaind from EvilPort: %i\n", evil_secret);
 	}
 
-	checksumPuzzle(ipx, udphdrx, socketFd, recvSocket, packet, message, packetLength);
+	secret_phrase = checksumPuzzle(ipx, udphdrx, socketFd, recvSocket, packet, message, packetLength);
 
 
 	return 1;
@@ -542,9 +542,6 @@ int approach_oracle()
 		knock_sequence[i] = atoi( knockorder.substr(index, index + 4).c_str() );
 		index += 5;
 	}
-	for (size_t i = 0; i < KNOCKCOUNT; i++) {
-		std::cout << knock_sequence[i] << std::endl;
-	}
 	return 1;
 }
 
@@ -576,10 +573,10 @@ int secret_knock(){
 	}
 
 	server_socket_addr.sin_port = htons(knock_sequence[KNOCKCOUNT - 1]);
-	std::string secret_phrase = "INSERT SECRET PHRASE";
-	char secret_message[strlen(message)];
+	int secret_phrase_length = 73; // don't hate me for hardcoding here
+	char secret_message[secret_phrase_length];
 	strcpy(secret_message, secret_phrase.c_str());
-	if( sendto(socketFd, secret_message, strlen(message), 0,(struct sockaddr *) &server_socket_addr, sizeof(server_socket_addr)) < 0 ){
+	if( sendto(socketFd, secret_message, secret_phrase_length, 0,(struct sockaddr *) &server_socket_addr, sizeof(server_socket_addr)) < 0 ){
 		printf("Last Knock Failed\n");
 		return -1;
 	}else{
