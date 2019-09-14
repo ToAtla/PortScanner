@@ -340,6 +340,41 @@ solve the three puzzle ports to get the 2 hidden ports
 3. "Please send me a message with a valid udp checksum with value of xxxxx"
 */
 
+// when you call this function make indexAt = 0, bottom be the messageSize-1, gotit is false, dataptr is data
+void recursionThing(int indexAt, char *message, int bottom, struct IPx *ipx, udpHdrx *udphdrx, char *packet, char *dataptr, bool gotIt)
+{
+	if (indexAt > bottom || gotIt)
+	{
+		return;
+	}
+	int originalValue = message[indexAt];
+	for (int i = originalValue; i <= 127; i++)
+	{
+		message[indexAt] = i;
+		if (indexAt == bottom)
+		{
+			//strcpy(dataptr, message);
+			//
+			//udphdrx->dest = htons(openPorts[CHECKSUMPORT]); // set port nr
+			//ipx->frag_off = 0x0000;							// dont want evil puzzle to have evil influence
+			//
+			//unsigned short check = htons(calculate_udp_checksum(udphdrx, ipx, message, sizeof(message)));
+			//cout << "message: " << message << " : " << check << endl;
+			//if (checksumGivenByPort == check)
+			//{
+			//	cout << "gots it: " << message << endl;
+			//	gotIt = true;
+			//}
+		}
+		else
+		{
+			recursionThing(indexAt + 1, message, bottom, ipx, udphdrx, packet, dataptr, gotIt);
+		}
+	}
+	message[indexAt] = 0;
+	return;
+}
+
 int answerMeTheseRiddlesThree()
 {
 
