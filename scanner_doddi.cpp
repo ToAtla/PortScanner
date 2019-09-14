@@ -4,6 +4,8 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <sys/time.h>
+#include <sys/types.h>
+#include <sys/socket.h>
 #include "ipx.h"
 #include "checksums.h"
 
@@ -15,7 +17,6 @@
 #include <linux/udp.h>
 #endif
 
-using namespace std;
 
 int high_port;
 int low_port;
@@ -36,26 +37,26 @@ const int CHECKSUMPORT = 2;
 const int ORACLEPORT = 3;
 
 // open port keywords
-const string EVILKEY = "evil";
-const string EZKEY = "port:";
-const string CHECKSUMKEY = "checksum";
-const string ORACLEKEY = "oracle";
+const std::string EVILKEY = "evil";
+const std::string EZKEY = "port:";
+const std::string CHECKSUMKEY = "checksum";
+const std::string ORACLEKEY = "oracle";
 
 
 // gets the index for a specific port for the openPorts array
-int getOpenPortIndex(string message)
+int getOpenPortIndex(std::string message)
 {
 	int portIndex = -1;
-	if (message.find(EVILKEY) != string::npos)
+	if (message.find(EVILKEY) != std::string::npos)
 		portIndex = EVILPORT;
 
-	else if (message.find(EZKEY) != string::npos)
+	else if (message.find(EZKEY) != std::string::npos)
 		portIndex = EZPORT;
 
-	else if (message.find(CHECKSUMKEY) != string::npos)
+	else if (message.find(CHECKSUMKEY) != std::string::npos)
 		portIndex = CHECKSUMPORT;
 
-	else if (message.find(ORACLEKEY) != string::npos)
+	else if (message.find(ORACLEKEY) != std::string::npos)
 		portIndex = ORACLEPORT;
 
 	return portIndex;
@@ -88,8 +89,8 @@ int findOpenPorts()
 		server_socket_addr.sin_port = htons(portno); // portnumber
 		socklen_t socklen = sizeof(server_socket_addr);
 
-		// send string to server
-		string sendString = "knock";
+		// send std::string to server
+		std::string sendString = "knock";
 		sendto(socketFd, sendString.c_str(), sendString.size() + 1, 0, (sockaddr *)&server_socket_addr, socklen);
 
 		// initalize the response buffer
@@ -107,19 +108,19 @@ int findOpenPorts()
 			int byteCount = recvfrom(socketFd, response, responseSize, 0, (sockaddr *)&server_socket_addr, &socklen);
 			if (byteCount < 0)
 			{
-				cout << "error receiving output from server" << endl;
+				std::cout << "error receiving output from server" << std::endl;
 			}
 			else
 			{
-				response[byteCount] = '\0'; // make sure to end the string at the right spot so we dont read of out memory
-				cout << "-----------------------" << endl;
-				cout << response << endl;
-				cout << "Byte count received: " << byteCount << ", "
-					 << "on port: " << portno << endl;
-				cout << "-----------------------" << endl;
+				response[byteCount] = '\0'; // make sure to end the std::string at the right spot so we dont read of out memory
+				std::cout << "-----------------------" << std::endl;
+				std::cout << response << std::endl;
+				std::cout << "Byte count received: " << byteCount << ", "
+					 << "on port: " << portno << std::endl;
+				std::cout << "-----------------------" << std::endl;
 
 				// put the open port in its rightful place in the array.
-				string responseString(response);
+				std::string responseString(response);
 				int portIndex = getOpenPortIndex(responseString);
 				if (portIndex < 0)
 				{
@@ -152,14 +153,14 @@ void printOpenPorts()
 {
 	for (int i = 0; i < OPENPORTCOUNT; i++)
 	{
-		cout << openPorts[i] << endl;
+		std::cout << openPorts[i] << std::endl;
 	}
 }
 
-string getMyIp()
+std::string getMyIp()
 {
-	// string source_ip_address = "10.0.2.15";
-	string source_ip_address = "172.30.1.9";
+	// std::string source_ip_address = "10.0.2.15";
+	std::string source_ip_address = "172.30.1.9";
 	printf("Hardcoded source IP is: %s", source_ip_address.c_str());
 	return source_ip_address;
 }
@@ -222,7 +223,7 @@ char random_char()
 }
 
 
-string find_checksum_message(int &message_length){
+std::string find_checksum_message(int &message_length){
 	int calculated_checksum = 0;
 	char message[20];
 	if(VERBOSE){
@@ -279,7 +280,7 @@ string find_checksum_message(int &message_length){
 	if(VERBOSE){
 		printf("Message found: %s of length %d\n", message, message_length);
 	}
-	string return_string(message);
+	std::string return_string(message);
 	return message;
 
 }
@@ -288,8 +289,11 @@ string find_checksum_message(int &message_length){
 
 int evilPuzzle(struct IPx *ipx, udpHdrx *udphdrx, int socketFd, int recvSocket, char *packet, int packetLength)
 {
+	if(VERBOSE){
+		printf("Solving Evil Puzzle\n");
+	}
 	// change what is specifically for this puzzle
-	ipx->frag_off = htons(0x8000);							  // set evil bit
+	ipx->frag_off = 0x8000;							  // set evil bit
 	server_socket_addr.sin_port = htons(openPorts[EVILPORT]); // set port nr
 	udphdrx->dest = htons(openPorts[EVILPORT]);				  // set port nr
 
@@ -299,14 +303,24 @@ int evilPuzzle(struct IPx *ipx, udpHdrx *udphdrx, int socketFd, int recvSocket, 
 	{
 		perror("Evil bit message sending failed.");
 		return -1;
+	}else{
+		if(VERBOSE){
+			printf("Evil Message Sent\n");
+		}
 	}
+
 
 	int responseSize = 128;
 	char response[128];
-	recvfrom(recvSocket, response, responseSize, 0, (sockaddr *)&server_socket_addr, &socklen);
-
+	if( (recvfrom(socketFd, (char *) response, responseSize, 0, (sockaddr *)&server_socket_addr, &socklen)) < 0){
+			printf("Failed to recieve Evil reply\n");
+	}else{
+		if(VERBOSE){
+			printf("Evil Message Recieved\n");
+		}
+	}
 	// extract the port
-	string responseString(response);
+	std::string responseString(response);
 	int beginIndex = responseString.find("\n") + 1;
 	int returnPort = atoi(responseString.substr(beginIndex).c_str());
 
@@ -315,20 +329,30 @@ int evilPuzzle(struct IPx *ipx, udpHdrx *udphdrx, int socketFd, int recvSocket, 
 
 int checksumPuzzle(struct IPx *ipx, udpHdrx *udphdrx, int socketFd, int recvSocket, char *packet, char *message, int packetLength)
 {
+	if(VERBOSE){
+		printf("Solving Checksum Puzzle\n");
+	}
 	server_socket_addr.sin_port = htons(openPorts[CHECKSUMPORT]); // set port nr
 	udphdrx->dest = htons(openPorts[CHECKSUMPORT]);				  // set port nr
 	ipx->frag_off = 0x0000;										  // dont want evil puzzle to have evil influence
+
 	udphdrx->check = calculate_udp_checksum(udphdrx, ipx, message, strlen(message));
 
 
 	socklen_t socklen = sizeof(server_socket_addr);
+	if(VERBOSE){
+		printf("Sending Checksum Message\n");
+	}
 	sendto(socketFd, packet, packetLength, 0, (sockaddr *)&server_socket_addr, socklen);
 
 	int responseSize = 128;
 	char response[128];
+	if(VERBOSE){
+		printf("Recieving Checksum Message\n");
+	}
 	recvfrom(recvSocket, response, responseSize, 0, (sockaddr *)&server_socket_addr, &socklen);
 
-	cout << response << endl;
+	std::cout << response << std::endl;
 
 	return 1;
 }
@@ -359,10 +383,10 @@ void recursionThing(int indexAt, char *message, int bottom, struct IPx *ipx, udp
 			//ipx->frag_off = 0x0000;							// dont want evil puzzle to have evil influence
 			//
 			//unsigned short check = htons(calculate_udp_checksum(udphdrx, ipx, message, sizeof(message)));
-			//cout << "message: " << message << " : " << check << endl;
+			//std::cout << "message: " << message << " : " << check << std::endl;
 			//if (checksumGivenByPort == check)
 			//{
-			//	cout << "gots it: " << message << endl;
+			//	std::cout << "gots it: " << message << std::endl;
 			//	gotIt = true;
 			//}
 		}
@@ -384,8 +408,10 @@ int answerMeTheseRiddlesThree()
 	// TODO cannot be longer than 20 Bytes, otherwise the checksum will be incorrect
 	//char possible_message1[] = "cu<2/3>";
 	//char possible_message2[] = "`Ur[8d8uYfR";
-	int message_char_amount = 0;
-	string checksum_string = find_checksum_message(message_char_amount);
+	// int message_char_amount = 0;
+	// std::string checksum_string = find_checksum_message(message_char_amount);
+	int message_char_amount = 12;
+	std::string checksum_string = "q4cc`$aERzNc";
 	char message[message_char_amount];
 	strcpy(message, checksum_string.c_str());
 	//printf("Trying message: %s\n", message);
@@ -434,14 +460,21 @@ int answerMeTheseRiddlesThree()
 
 	// new socket to receive from the server.
 	int recvSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-	bind(recvSocket, (struct sockaddr *)&my_addr, sizeof(my_addr));
+	int res = bind(recvSocket, (struct sockaddr *) &my_addr, (socklen_t) sizeof(my_addr));
+  if(  res < 0 ){
+			printf("Failed to bind recvsocket to localport\n");
+	}else{
+		if(VERBOSE){
+			printf("Bound recv port to localport\n");
+		}
+	}
 
 	// add neccessary data to the headers in the packet
 	populateIPx(ipx, myIp, packet, packetLength);
 	populateudpHdrx(udphdrx, myPort, message_char_amount);
 
 	int bla = evilPuzzle(ipx, udphdrx, socketFd, recvSocket, packet, packetLength);
-	cout << "port from evil port " << bla << endl;
+	std::cout << "port from evil port " << bla << std::endl;
 
 	checksumPuzzle(ipx, udphdrx, socketFd, recvSocket, packet, message, packetLength);
 
@@ -468,7 +501,7 @@ int main(int argc, char *argv[])
 
 	// if (findOpenPorts() > 0)
 	// {
-	// 	cout << "open ports found: " << endl;
+	// 	std::cout << "open ports found: " << std::endl;
 	// 	printOpenPorts();
 	// }
 	openPorts[EVILPORT] = 4097;
