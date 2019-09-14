@@ -342,17 +342,20 @@ solve the three puzzle ports to get the 2 hidden ports
 
 int answerMeTheseRiddlesThree()
 {
-	// first lets do the checksum puzzle
+
 	struct IPx *ipx;
 	struct udpHdrx *udphdrx;
 	char *data;
 	// TODO cannot be longer than 20 Bytes, otherwise the checksum will be incorrect
 	//char possible_message1[] = "cu<2/3>";
 	//char possible_message2[] = "`Ur[8d8uYfR";
-	char message[] = "cu<2/3>";
+	int message_char_amount = 0;
+	string checksum_string = find_checksum_message(message_char_amount);
+	char message[message_char_amount];
+	strcpy(message, checksum_string.c_str());
 	//printf("Trying message: %s\n", message);
 
-	short packetLength = sizeof(struct IPx) + sizeof(struct udpHdrx) + strlen(message);
+	short packetLength = sizeof(struct IPx) + sizeof(struct udpHdrx) + message_char_amount;
 
 	// TODO: how big should this be?
 	char packet[packetLength];
@@ -400,7 +403,7 @@ int answerMeTheseRiddlesThree()
 
 	// add neccessary data to the headers in the packet
 	populateIPx(ipx, myIp, packet, packetLength);
-	populateudpHdrx(udphdrx, myPort, strlen(message));
+	populateudpHdrx(udphdrx, myPort, message_char_amount);
 
 	int bla = evilPuzzle(ipx, udphdrx, socketFd, recvSocket, packet, packetLength);
 	cout << "port from evil port " << bla << endl;
@@ -437,8 +440,7 @@ int main(int argc, char *argv[])
 	openPorts[ORACLEPORT] = 4042;
 	openPorts[CHECKSUMPORT] = 4098;
 	openPorts[EZPORT] = 0;
-	int a = 0;
-	find_checksum_message(a);
+
 	answerMeTheseRiddlesThree();
 
 	return 0;
