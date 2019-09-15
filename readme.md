@@ -1,4 +1,4 @@
-# Project 1 - Readme
+# Project 2 - Readme
 
 Welcome to the readme file for our project.
 - **Student:** Þórður Atlason, **E-mail** thorduratl17@ru.is
@@ -46,10 +46,10 @@ From three of the open ports there were puzzles
 ### Oracle and knocking
 Then we send the 4th open port, the oracle, the right sequence of ports and get the right order and number of knocks to use to knock on the hidden ports in the correct order and print out their messages.
 
-Our program has a variable called VERBOSE, if you wish to not get a detailed step by step of whats happening turn it to 0.
-
 
 ## Assumptions and measures
+Our program has a variable called VERBOSE, if you wish to not get a detailed step by step of whats happening turn it to 0.
+
 As our code stands now the function "checskumPuzzle" returns a hardcoded return value because we did this assignment not on campus and therefore never got the secret message, it should work to replace the hard coded string with the response variable if on campus.
 
 As UDP is unreliable we run the port scanner in a loop until we get 4 open ports.
