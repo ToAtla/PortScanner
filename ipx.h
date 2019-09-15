@@ -2,37 +2,46 @@
 // IP and UDP header structs taken from https://unix.superglobalmegacorp.com/Net2/newsrc/netinet/ip.h.html
 //
 // Added here to enforce consistency and compatability between Linux and OSX
-struct IPx {
-    #if BYTE_ORDER == LITTLE_ENDIAN
-    	u_char	ihl:4,		/* header length */
-    		version:4;			/* version */
-    #endif
-    #if BYTE_ORDER == BIG_ENDIAN
-    	u_char version:4,			/* version */
-    		ihl:4;		/* header length */
-    #endif
-    	u_char	tos;			/* type of service */
-    	short	tot_len;			/* total length */
-    	u_short	id;			/* identification */
-    	short	frag_off;			/* fragment offset field */
-    #define	IP_DF 0x4000			/* dont fragment flag */
-    #define	IP_MF 0x2000			/* more fragments flag */
-    	u_char	ttl;			/* time to live */
-    	u_char	protocol;			/* protocol */
-    	u_short	check;			/* checksum */
-      __uint32_t saddr, daddr;	/* source and dest address */
+struct IPx
+{
+#if BYTE_ORDER == LITTLE_ENDIAN
+	u_char ihl : 4,  /* header length */
+		version : 4; /* version */
+#endif
+#if BYTE_ORDER == BIG_ENDIAN
+	u_char version : 4, /* version */
+		ihl : 4;		/* header length */
+#endif
+	u_char tos;				 /* type of service */
+	short tot_len;			 /* total length */
+	u_short id;				 /* identification */
+	short frag_off;			 /* fragment offset field */
+#define IP_DF 0x4000		 /* dont fragment flag */
+#define IP_MF 0x2000		 /* more fragments flag */
+	u_char ttl;				 /* time to live */
+	u_char protocol;		 /* protocol */
+	u_short check;			 /* checksum */
+	__uint32_t saddr, daddr; /* source and dest address */
 };
 
-struct udpHdrx {
-	u_short	source;		/* source port */
-	u_short	dest;		/* destination port */
-	u_short	len;		/* udp length */
-	u_short	check;			/* udp checksum */
+struct udpHdrx
+{
+	u_short source; /* source port */
+	u_short dest;   /* destination port */
+	u_short len;	/* udp length */
+	u_short check;  /* udp checksum */
 };
 
+struct icmphdr
+{
+	u_int8_t type; /* message type */
+	u_int8_t code; /* type sub-code */
+	u_int16_t checksum;
+	u_int16_t id;
+	u_int16_t sequence;
+};
 
 // Here are both original versions for reference:
-
 
 // Linux
 
