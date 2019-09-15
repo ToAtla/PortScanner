@@ -127,7 +127,7 @@ int findOpenPorts()
 		// select socketFd if there is some data to be read within the timout
 		struct timeval timeout;
 		timeout.tv_sec = 0;
-		timeout.tv_usec = 100000; // half a second
+		timeout.tv_usec = 500000; // half a second
 		if (select(socketFd + 1, &sockets, NULL, NULL, &timeout) > 0)
 		{
 			int byteCount = recvfrom(socketFd, response, responseSize, 0, (sockaddr *)&server_socket_addr, &socklen);
