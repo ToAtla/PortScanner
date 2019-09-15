@@ -127,7 +127,7 @@ int findOpenPorts()
 		// select socketFd if there is some data to be read within the timout
 		struct timeval timeout;
 		timeout.tv_sec = 0;
-		timeout.tv_usec = 500000; // half a second
+		timeout.tv_usec = 100000; // half a second
 		if (select(socketFd + 1, &sockets, NULL, NULL, &timeout) > 0)
 		{
 			int byteCount = recvfrom(socketFd, response, responseSize, 0, (sockaddr *)&server_socket_addr, &socklen);
@@ -225,9 +225,10 @@ void populateIPx(struct IPx *ipx, char *myIp, char *packet, short packetLength)
 	ipx->frag_off = 0x0000;
 	ipx->ttl = 0xFF;			 // time to live as much as possible
 	ipx->protocol = IPPROTO_UDP; // set to udp protocol
-	ipx->check = csum((unsigned short *)packet, ipx->tot_len >> 1);
 	ipx->saddr = inet_addr(myIp);
 	ipx->daddr = inet_addr(ip_address);
+	ipx->check = 0;
+	ipx->check = csum((unsigned short *)packet, ipx->tot_len);
 }
 
 // populate standard things in the udp header
@@ -317,6 +318,19 @@ std::string find_checksum_message(int &message_length)
 		}
 		delete[] message;
 	}
+}
+
+int new_find_checksum_message(struct IPx *ipx, struct udpHdrx *udphdrx, char *data, char* packet, int packetLength)
+{
+
+	int messageLength = 2;
+	char message[messageLength];
+	memset(message, 0, messageLength);
+
+	udphdrx->dest = htons(open_ports[CHECKSUMPORT]); // set port nr
+	int calculated_checksum = calculate_udp_checksum(udphdrx, ipx, message, messageLength);
+
+	return calculated_checksum - target_checksum;
 }
 
 /*
@@ -435,18 +449,17 @@ int answerMeTheseRiddlesThree()
 	struct IPx *ipx;
 	struct udpHdrx *udphdrx;
 	char *data;
+	int messageLength = 2;
+
 	// TODO cannot be longer than 20 Bytes, otherwise the checksum will be incorrect
 	//char possible_message1[] = "cu<2/3>";
 	//char possible_message2[] = "`Ur[8d8uYfR";
-	int message_char_amount = 0;
-	std::string checksum_string = find_checksum_message(message_char_amount);
 	// int message_char_amount = 12;
 	// std::string checksum_string = "q4cc`$aERzNc";
-	char *message = new char[message_char_amount];
-	strcpy(message, checksum_string.c_str());
+
 	//printf("Trying message: %s\n", message);
 
-	short packetLength = sizeof(struct IPx) + sizeof(struct udpHdrx) + message_char_amount;
+	short packetLength = sizeof(struct IPx) + sizeof(struct udpHdrx) + messageLength;
 
 	char packet[packetLength];
 	memset(packet, 0, sizeof(packet));
@@ -457,8 +470,6 @@ int answerMeTheseRiddlesThree()
 	data = (char *)(packet + sizeof(struct IPx) + sizeof(struct udpHdrx));
 
 	// write the message into its appropriate place within the packet
-	strcpy(data, message);
-
 	// raw socket without andy protocol header
 	int socketFd = socket(AF_INET, SOCK_RAW, IPPROTO_RAW);
 	if (socketFd < 0)
@@ -502,7 +513,10 @@ int answerMeTheseRiddlesThree()
 
 	// add neccessary data to the headers in the packet
 	populateIPx(ipx, myIp, packet, packetLength);
-	populateudpHdrx(udphdrx, LOCALPORT, message_char_amount);
+	populateudpHdrx(udphdrx, LOCALPORT, messageLength);
+
+	int messageAsInt = new_find_checksum_message(ipx, udphdrx, data, packet, packetLength);
+	*(short *)data = messageAsInt;
 
 	evil_secret = evilPuzzle(ipx, udphdrx, socketFd, recvSocket, packet, packetLength);
 	if (VERBOSE)
@@ -510,6 +524,8 @@ int answerMeTheseRiddlesThree()
 		printf("Port obtaind from EvilPort: %i\n", evil_secret);
 	}
 
+	char message[messageLength];
+	*(int *)message = messageAsInt;
 	secret_phrase = checksumPuzzle(ipx, udphdrx, socketFd, recvSocket, packet, message, packetLength);
 	close(socketFd);
 	return 1;
@@ -706,6 +722,7 @@ int main(int argc, char *argv[])
 	memset(&server_socket_addr, 0, sizeof(server_socket_addr)); // Initialise memory
 	server_socket_addr.sin_family = AF_INET;					// pv4
 	server_socket_addr.sin_addr.s_addr = inet_addr(ip_address); // bind to server ip
+
 	findOpenPorts();
 	// if we didnt get all ports then try again.
 	while (num_of_found_ports() != 4)
@@ -727,9 +744,10 @@ int main(int argc, char *argv[])
 	//open_ports[EZPORT] = 4099;
 	//target_checksum = htons(61453);
 
+	std::cout << target_checksum << std::endl;
+
 	answerMeTheseRiddlesThree();
 	approach_oracle();
 	secret_knock();
-
 	return 0;
 }
