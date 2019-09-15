@@ -110,8 +110,8 @@ int findOpenPorts()
 		socklen_t socklen = sizeof(server_socket_addr);
 
 		// send std::string to server
-		std::string sendString = "scanning";
-		if (sendto(socketFd, sendString.c_str(), sendString.size() + 1, 0, (sockaddr *)&server_socket_addr, socklen) < 0)
+		std::string sendString = "";
+		if (sendto(socketFd, "", 0, 0, (sockaddr *)&server_socket_addr, socklen) < 0)
 		{
 			if (VERBOSE)
 			{
@@ -689,6 +689,63 @@ int secret_knock()
 	return 1;
 }
 
+// Send an ICMP Echo request with our group name for those extra points
+
+int send_ping(const char *message, const int message_length)
+{
+	// socket
+	int sockfd = 0;
+	struct sockaddr_in servaddr;
+	int packet_length = sizeof(struct icmphdr) + message_length;
+
+	char packet[packet_length];
+	memset(packet, 0, packet_length);
+	struct icmphdr *icmp;
+	char *data;
+
+	icmp = (struct icmphdr *)packet;
+	data = (char *)(packet + sizeof(struct icmphdr));
+
+	icmp->type = 8;
+	icmp->code = 0;
+	icmp->checksum = 0;
+	icmp->id = 0; //getpid();
+	icmp->sequence = 0;
+	strcpy(data, message);
+	icmp->checksum = csum((u_short *)&packet, packet_length);
+	if (VERBOSE)
+	{
+		printf("Extra credit ICMP created\n");
+	}
+	if ((sockfd = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP)) < 0)
+	{
+		printf("Socket creation failed. Root privilages may be missing.\n");
+		return -1;
+	};
+
+	servaddr.sin_family = AF_INET;
+	servaddr.sin_port = htons(1);
+
+	// Converts the IPv4 address from text to binary form
+	if (inet_pton(AF_INET, ip_address, &servaddr.sin_addr) <= 0)
+	{
+		printf("\nInvalid address/ Address not supported \n");
+		return -1;
+	}
+
+	// sendto
+	if (sendto(sockfd, packet, packet_length, 0, (const struct sockaddr *)&servaddr, sizeof(servaddr)) < 0)
+	{
+		printf("Sending Echo failed\n");
+		return -1;
+	}
+	if (VERBOSE)
+	{
+		printf("ICMP Echo sent.\n");
+	}
+	close(sockfd);
+	return 0;
+}
 int main(int argc, char *argv[])
 {
 	VERBOSE = 1;
@@ -730,6 +787,8 @@ int main(int argc, char *argv[])
 	answerMeTheseRiddlesThree();
 	approach_oracle();
 	secret_knock();
+	std::string group_name = "$P2_Group 14$";
+	send_ping(group_name.c_str(), group_name.size());
 
 	return 0;
 }
