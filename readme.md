@@ -4,19 +4,25 @@ Welcome to the readme file for our project.
 - **Student:** Þórður Atlason, **E-mail** thorduratl17@ru.is
 - **Student:** Þórður Friðriksson, **E-mail** thordurf17@ru.is
 
-
+## Nutshell
+A port scanner and puzzle solver for a networking course at RU.
+Knocks on a set range of ports at a certain IP with UDP packets and solves the predefined puzzles hiding behind some of the ports.
 
 ## Compilation
 
 Run the **makefile** with the command:
-`$make`
-That should run the following commands:
-`$rm -f scanner`
-and
-`$g++ -std=c++11 scanner.cpp -o scanner`
-This makefile has been tested on MacOS and compiels the scanner.
 
-This makefile has been tesdted on linux and compiels the scanner.
+`$make`
+
+That should run the following commands:
+
+`$rm -f scanner`
+
+and
+
+`$g++ -std=c++11 scanner.cpp -o scanner`
+
+This makefile has been tesdted on linux and compiles the scanner.
 
 ## Usage
 
@@ -24,7 +30,9 @@ This makefile has been tesdted on linux and compiels the scanner.
 The executable needs to be run as root to be able to create raw sockets.
 
 On your machine run:
+
 `$sudo ./scanner IP_ADDRESS PORT_NUMBER_START PORT_NUMBER_END`
+
 and the scanner will send a udp packet to each port in the range specified.
 
 If the scanner finds anything interesting (gets back a udp message), the results will be printed to the command line.
@@ -35,10 +43,10 @@ The scanner has a timout for each receive of 0.5 seconds, this makes it rather s
 Quit the program preemptively with escape characters ( presumably CTRL+C ).
 Otherwise the program ends after the scanning.
 
-### puzzles
+### Puzzles
 From three of the open ports there were puzzles 
 
- - The first being that we only had to extract a given port from the message received in a.), we called this the ez port.
+ - The first being that we only had to extract a given port from the message received in a.), we called this the easy port.
  - The second was that we needed to set the evil bit in our header and send it to the evil port to get another port.
  - The third was that we needed to send a specific correctly calculated checksum to the checksum port and get back a secret message.
 
@@ -53,15 +61,6 @@ Our program has a variable called VERBOSE, if you wish to not get a detailed ste
 As our code stands now the function "checskumPuzzle" returns a hardcoded return value because we did this assignment not on campus and therefore never got the secret message, it should work to replace the hard coded string with the response variable if on campus.
 
 As UDP is unreliable we run the port scanner in a loop until we get 4 open ports.
-
-As UDP is an unreliable protocol we repeat each port "door-knock" three times, to give the ICMP error messages ample chance to arrive.
-
-The formula for UDP usage is:
-
- - socket(AF_INET, SOCK_RAW, IPPROTO_ICMP) //creating the raw socket for an ICMP echo message
-- sendto(...) // Ping the port on the ip
-- recvfrom(...) // Accept the answer/error message
-- close(...) // for good measure
 
 ## Resources and Inspiration
 
